@@ -78,6 +78,15 @@ npx convex deploy --cmd-url-env-var-name VITE_CONVEX_URL --cmd "npm run build"
 
 In this configuration, Convex deploys the backend and provides `VITE_CONVEX_URL` to the frontend build automatically. Authentication is still intentionally deferred in this MVP, so a deployed instance must contain test data only until authenticated identities replace the development identity selector.
 
+## Authentication (ToDo)
+
+Create Authentication Admin that lets end users configure their auth provider of choice. 
+The following providers are expected to be added:
+- Google oAuth
+- Shoo
+- WorkOs
+- Clerk
+
 ## License
 
 Nebula Secrets is available under the [MIT License](LICENSE.txt).
