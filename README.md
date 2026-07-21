@@ -99,8 +99,10 @@ Set `VITE_CONVEX_URL`, `VITE_WORKOS_CLIENT_ID`, and `VITE_WORKOS_REDIRECT_URI` i
 Alternatively, Vercel can deploy both parts during its build using a production `CONVEX_DEPLOY_KEY` and this build command:
 
 ```text
-npx convex deploy --cmd-url-env-var-name VITE_CONVEX_URL --cmd "npm run build"
+npx convex deploy --cmd 'npm run build' --cmd-url-env-var-name VITE_CONVEX_URL
 ```
+
+If Vercel has a Build Command override in **Settings > Build & Development Settings**, use the command above exactly (without `@` characters), or remove the override so the checked-in `vercel.json` is used. Production builds require `CONVEX_DEPLOY_KEY`, `WORKOS_CLIENT_ID`, `WORKOS_API_KEY`, `VITE_WORKOS_CLIENT_ID`, and `VITE_WORKOS_REDIRECT_URI` in Vercel's Production environment scope. Preview builds require separately scoped Preview credentials and a Preview deploy key.
 
 ## License
 
