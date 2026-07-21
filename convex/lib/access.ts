@@ -1,37 +1,81 @@
-import type { Id } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { Environment, SharedEnvironment } from "../validators";
 
 type ReadCtx = QueryCtx | MutationCtx;
 
-export async function requireActor(ctx: ReadCtx, actorUserId: Id<"users">) {
-  const actor = await ctx.db.get("users", actorUserId);
-  if (!actor || actor.status !== "active") {
-    throw new Error("This development identity is not active.");
+export function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+export function isWorkosIssuer(issuer: string) {
+  return (
+    issuer === "https://api.workos.com/" ||
+    issuer.startsWith("https://api.workos.com/user_management/")
+  );
+}
+
+export async function getCurrentUser(
+  ctx: ReadCtx,
+): Promise<Doc<"users"> | null> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) return null;
+  return await ctx.db
+    .query("users")
+    .withIndex("by_tokenIdentifier", (q) =>
+      q.eq("tokenIdentifier", identity.tokenIdentifier),
+    )
+    .unique();
+}
+
+export async function requireActor(ctx: ReadCtx) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) throw new Error("Not authenticated.");
+
+  const actor = await ctx.db
+    .query("users")
+    .withIndex("by_tokenIdentifier", (q) =>
+      q.eq("tokenIdentifier", identity.tokenIdentifier),
+    )
+    .unique();
+  if (!actor) {
+    throw new Error(
+      "This authenticated identity is not linked to a Nebula user.",
+    );
+  }
+  if (actor.status !== "active") {
+    throw new Error("This user account is suspended.");
   }
   return actor;
 }
 
-export async function requireAdmin(ctx: ReadCtx, actorUserId: Id<"users">) {
-  const actor = await requireActor(ctx, actorUserId);
-  if (actor.role !== "admin") {
+export async function requireAdmin(ctx: ReadCtx) {
+  const actor = await requireActor(ctx);
+  if (actor.role !== "admin" && actor.role !== "systemAdministrator") {
     throw new Error("Admin role required.");
+  }
+  return actor;
+}
+
+export async function requireSystemAdministrator(ctx: ReadCtx) {
+  const actor = await requireActor(ctx);
+  if (actor.role !== "systemAdministrator") {
+    throw new Error("System Administrator role required.");
   }
   return actor;
 }
 
 export async function requireEnvironmentAccess(
   ctx: ReadCtx,
-  actorUserId: Id<"users">,
   environment: Environment,
 ) {
-  const actor = await requireActor(ctx, actorUserId);
+  const actor = await requireActor(ctx);
   if (environment === "local") return actor;
 
   const grant = await ctx.db
     .query("environmentGrants")
     .withIndex("by_userId_and_environment", (q) =>
-      q.eq("userId", actorUserId).eq("environment", environment),
+      q.eq("userId", actor._id).eq("environment", environment),
     )
     .unique();
   if (!grant || grant.status !== "active") {

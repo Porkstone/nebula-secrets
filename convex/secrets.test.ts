@@ -1,10 +1,11 @@
 /// <reference types="vite/client" />
-import { convexTest } from "convex-test";
+import { convexTest, type TestConvex } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
+const workosIssuer = "https://api.workos.com/user_management/client_test";
 
 const encryptedPayload = {
   ciphertext: "ciphertext",
@@ -14,11 +15,25 @@ const encryptedPayload = {
   aadVersion: 1 as const,
 };
 
+function authenticated(
+  t: TestConvex<typeof schema>,
+  subject: string,
+  email: string,
+) {
+  return t.withIdentity({
+    issuer: workosIssuer,
+    subject,
+    tokenIdentifier: `${workosIssuer}|${subject}`,
+    email,
+    emailVerified: true,
+  });
+}
+
 async function initializedVault() {
   const t = convexTest(schema, modules);
-  const adminId = await t.mutation(api.bootstrap.initialize, {
+  const admin = authenticated(t, "user_admin", "admin@example.test");
+  const adminId = await admin.mutation(api.bootstrap.initialize, {
     displayName: "Admin",
-    email: "admin@example.test",
     publicKeyJwk: "admin-public-key",
     keyEnvelopes: [
       { environment: "local", wrappedKey: "local-key" },
@@ -27,37 +42,79 @@ async function initializedVault() {
       { environment: "production", wrappedKey: "production-key" },
     ],
   });
-  return { t, adminId };
+  return { t, admin, adminId };
 }
 
-describe("secrets MVP access model", () => {
-  test("bootstraps exactly once and creates environment access for the first Admin", async () => {
-    const { t, adminId } = await initializedVault();
-    const access = await t.query(api.access.listMine, { actorUserId: adminId });
+async function inviteAndLinkDeveloper(
+  t: TestConvex<typeof schema>,
+  admin: ReturnType<typeof authenticated>,
+) {
+  const developerId = await admin.mutation(api.users.create, {
+    displayName: "Developer",
+    email: "developer@example.test",
+    role: "developer",
+  });
+  const developer = authenticated(
+    t,
+    "user_developer",
+    "developer@example.test",
+  );
+  await developer.mutation(api.users.linkCurrentIdentity, {});
+  return { developer, developerId };
+}
 
+describe("authenticated secrets access model", () => {
+  test("bootstraps exactly once as a System Administrator", async () => {
+    const { admin, adminId } = await initializedVault();
+    const access = await admin.query(api.access.listMine, {});
+    const current = await admin.query(api.users.current, {});
+
+    expect(current).toMatchObject({
+      _id: adminId,
+      role: "systemAdministrator",
+      authProvider: "workos",
+    });
     expect(access).toHaveLength(4);
     expect(access.every((item) => item.granted && item.hasKey)).toBe(true);
     await expect(
-      t.mutation(api.bootstrap.initialize, {
+      admin.mutation(api.bootstrap.initialize, {
         displayName: "Second Admin",
-        email: "second@example.test",
         publicKeyJwk: "public-key",
         keyEnvelopes: [],
       }),
     ).rejects.toThrow("already been initialized");
   });
 
-  test("keeps Local values private to their selected user", async () => {
-    const { t, adminId } = await initializedVault();
-    const developerId = await t.mutation(api.users.create, {
-      actorUserId: adminId,
-      displayName: "Developer",
+  test("rejects anonymous calls instead of trusting a client user ID", async () => {
+    const { t } = await initializedVault();
+    await expect(t.query(api.projects.list, {})).rejects.toThrow(
+      "Not authenticated",
+    );
+    await expect(t.query(api.access.listMine, {})).rejects.toThrow(
+      "Not authenticated",
+    );
+  });
+
+  test("links an invited user by exact WorkOS email", async () => {
+    const { t, admin } = await initializedVault();
+    const { developer, developerId } = await inviteAndLinkDeveloper(t, admin);
+    expect(await developer.query(api.users.current, {})).toMatchObject({
+      _id: developerId,
       email: "developer@example.test",
-      role: "developer",
+      isIdentityLinked: true,
     });
 
-    await t.mutation(api.secrets.save, {
-      actorUserId: adminId,
+    const stranger = authenticated(t, "user_stranger", "stranger@example.test");
+    await expect(
+      stranger.mutation(api.users.linkCurrentIdentity, {}),
+    ).rejects.toThrow("No invited Nebula user matches");
+  });
+
+  test("keeps Local values private to the authenticated user", async () => {
+    const { t, admin } = await initializedVault();
+    const { developer } = await inviteAndLinkDeveloper(t, admin);
+
+    await admin.mutation(api.secrets.save, {
       environment: "local",
       cryptoId: "local-secret",
       name: "Local database",
@@ -65,12 +122,10 @@ describe("secrets MVP access model", () => {
       payload: encryptedPayload,
     });
 
-    const adminRows = await t.query(api.secrets.list, {
-      actorUserId: adminId,
+    const adminRows = await admin.query(api.secrets.list, {
       environment: "local",
     });
-    const developerRows = await t.query(api.secrets.list, {
-      actorUserId: developerId,
+    const developerRows = await developer.query(api.secrets.list, {
       environment: "local",
     });
     expect(adminRows[0]?.value).not.toBeNull();
@@ -78,43 +133,31 @@ describe("secrets MVP access model", () => {
   });
 
   test("requires Admin role and an active shared-environment grant", async () => {
-    const { t, adminId } = await initializedVault();
-    const developerId = await t.mutation(api.users.create, {
-      actorUserId: adminId,
-      displayName: "Developer",
-      email: "developer@example.test",
-      role: "developer",
-    });
-    await t.mutation(api.users.enrollDevice, {
-      actorUserId: developerId,
+    const { t, admin } = await initializedVault();
+    const { developer, developerId } = await inviteAndLinkDeveloper(t, admin);
+    await developer.mutation(api.users.enrollDevice, {
       publicKeyJwk: "developer-public-key",
       localKeyEnvelope: "developer-local-key",
     });
 
     await expect(
-      t.mutation(api.users.create, {
-        actorUserId: developerId,
+      developer.mutation(api.users.create, {
         displayName: "Not allowed",
         email: "blocked@example.test",
         role: "developer",
       }),
     ).rejects.toThrow("Admin role required");
     await expect(
-      t.query(api.secrets.list, {
-        actorUserId: developerId,
-        environment: "development",
-      }),
+      developer.query(api.secrets.list, { environment: "development" }),
     ).rejects.toThrow("Access to development is required");
 
-    await t.mutation(api.access.setGrant, {
-      actorUserId: adminId,
+    await admin.mutation(api.access.setGrant, {
       targetUserId: developerId,
       environment: "development",
       enabled: true,
       wrappedKey: "developer-development-key",
     });
-    await t.mutation(api.secrets.save, {
-      actorUserId: adminId,
+    await admin.mutation(api.secrets.save, {
       environment: "development",
       cryptoId: "shared-secret",
       name: "Shared API",
@@ -122,51 +165,59 @@ describe("secrets MVP access model", () => {
       payload: encryptedPayload,
     });
 
-    const rows = await t.query(api.secrets.list, {
-      actorUserId: developerId,
+    const rows = await developer.query(api.secrets.list, {
       environment: "development",
     });
     expect(rows[0]?.definition.name).toBe("Shared API");
     expect(rows[0]?.value?.payload.ciphertext).toBe("ciphertext");
   });
 
-  test("allows only an Admin to reset a disposable development workspace", async () => {
-    const { t, adminId } = await initializedVault();
-    const developerId = await t.mutation(api.users.create, {
-      actorUserId: adminId,
-      displayName: "Developer",
-      email: "developer@example.test",
-      role: "developer",
-    });
+  test("reserves authentication configuration and reset for System Administrators", async () => {
+    const { t, admin } = await initializedVault();
+    const { developer } = await inviteAndLinkDeveloper(t, admin);
 
     await expect(
-      t.mutation(api.devtools.resetWorkspace, {
-        actorUserId: developerId,
+      developer.query(api.authSettings.getForSystemAdministrator, {}),
+    ).rejects.toThrow("System Administrator role required");
+    await expect(
+      developer.mutation(api.devtools.resetWorkspace, {
         confirmation: "RESET NEBULA",
       }),
-    ).rejects.toThrow("Admin role required");
+    ).rejects.toThrow("System Administrator role required");
 
-    const result = await t.mutation(api.devtools.resetWorkspace, {
-      actorUserId: adminId,
+    await admin.mutation(api.authSettings.save, {
+      provider: "workos",
+      clientId: "client_test",
+      redirectUri: "http://127.0.0.1:5173/callback",
+      allowedEmailDomains: ["example.test"],
+    });
+    const settings = await admin.query(
+      api.authSettings.getForSystemAdministrator,
+      {},
+    );
+    expect(settings.configuration).toMatchObject({
+      provider: "workos",
+      state: "staged",
+    });
+
+    const result = await admin.mutation(api.devtools.resetWorkspace, {
       confirmation: "RESET NEBULA",
     });
     expect(result.deletedDocuments).toBeGreaterThan(0);
-    expect(await t.query(api.bootstrap.state, {})).toEqual({ initialized: false });
+    expect(await t.query(api.bootstrap.state, {})).toEqual({
+      initialized: false,
+    });
   });
 
   test("groups secrets into projects and protects projects in use", async () => {
-    const { t, adminId } = await initializedVault();
-    const generalProject = (await t.query(api.projects.list, { actorUserId: adminId })).find(
+    const { admin } = await initializedVault();
+    const generalProject = (await admin.query(api.projects.list, {})).find(
       (project) => project.normalizedName === "general",
     );
-    expect(generalProject?.name).toBe("General");
-    const projectId = await t.mutation(api.projects.create, {
-      actorUserId: adminId,
+    const projectId = await admin.mutation(api.projects.create, {
       name: "  Nebula   Platform  ",
     });
-
-    const saved = await t.mutation(api.secrets.save, {
-      actorUserId: adminId,
+    const saved = await admin.mutation(api.secrets.save, {
       environment: "local",
       projectId,
       cryptoId: "project-secret",
@@ -174,24 +225,17 @@ describe("secrets MVP access model", () => {
       type: "apiKey",
       payload: encryptedPayload,
     });
-    const rows = await t.query(api.secrets.list, {
-      actorUserId: adminId,
-      environment: "local",
-    });
-    expect(rows.find((row) => row.definition._id === saved.secretId)?.definition.projectId).toBe(
-      projectId,
-    );
+
     expect(
-      (await t.query(api.projects.list, { actorUserId: adminId })).some(
-        (project) => project.name === "Nebula Platform",
-      ),
-    ).toBe(true);
+      (await admin.query(api.secrets.list, { environment: "local" })).find(
+        (row) => row.definition._id === saved.secretId,
+      )?.definition.projectId,
+    ).toBe(projectId);
     await expect(
-      t.mutation(api.projects.archive, { actorUserId: adminId, projectId }),
+      admin.mutation(api.projects.archive, { projectId }),
     ).rejects.toThrow("Move this project's secrets");
 
-    await t.mutation(api.secrets.save, {
-      actorUserId: adminId,
+    await admin.mutation(api.secrets.save, {
       environment: "local",
       secretId: saved.secretId,
       projectId: generalProject?._id,
@@ -202,29 +246,7 @@ describe("secrets MVP access model", () => {
       expectedVersion: 1,
     });
     await expect(
-      t.mutation(api.projects.archive, { actorUserId: adminId, projectId }),
+      admin.mutation(api.projects.archive, { projectId }),
     ).resolves.toBeNull();
-  });
-
-  test("uses General when a caller does not specify a project", async () => {
-    const { t, adminId } = await initializedVault();
-    const saved = await t.mutation(api.secrets.save, {
-      actorUserId: adminId,
-      environment: "local",
-      cryptoId: "default-project-secret",
-      name: "Default project API",
-      type: "apiKey",
-      payload: encryptedPayload,
-    });
-    const generalProject = (await t.query(api.projects.list, { actorUserId: adminId })).find(
-      (project) => project.normalizedName === "general",
-    );
-    const rows = await t.query(api.secrets.list, {
-      actorUserId: adminId,
-      environment: "local",
-    });
-    expect(rows.find((row) => row.definition._id === saved.secretId)?.definition.projectId).toBe(
-      generalProject?._id,
-    );
   });
 });

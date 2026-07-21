@@ -13,21 +13,21 @@ import {
 } from "./validators";
 
 export const listMine = query({
-  args: { actorUserId: v.id("users") },
-  handler: async (ctx, args) => {
-    await requireActor(ctx, args.actorUserId);
+  args: {},
+  handler: async (ctx) => {
+    const actor = await requireActor(ctx);
     return await Promise.all(
       (["local", "development", "uat", "production"] as const).map(
         async (environment) => {
           const granted =
             environment === "local"
               ? true
-              : Boolean(await getActiveGrant(ctx, args.actorUserId, environment));
+              : Boolean(await getActiveGrant(ctx, actor._id, environment));
           const envelope = await ctx.db
             .query("environmentKeyEnvelopes")
             .withIndex("by_userId_and_environment_and_keyVersion", (q) =>
               q
-                .eq("userId", args.actorUserId)
+                .eq("userId", actor._id)
                 .eq("environment", environment)
                 .eq("keyVersion", 1),
             )
@@ -41,16 +41,15 @@ export const listMine = query({
 
 export const getKeyEnvelope = query({
   args: {
-    actorUserId: v.id("users"),
     environment: environmentValidator,
   },
   handler: async (ctx, args) => {
-    await requireEnvironmentAccess(ctx, args.actorUserId, args.environment);
+    const actor = await requireEnvironmentAccess(ctx, args.environment);
     const envelope = await ctx.db
       .query("environmentKeyEnvelopes")
       .withIndex("by_userId_and_environment_and_keyVersion", (q) =>
         q
-          .eq("userId", args.actorUserId)
+          .eq("userId", actor._id)
           .eq("environment", args.environment)
           .eq("keyVersion", 1),
       )
@@ -63,15 +62,14 @@ export const getKeyEnvelope = query({
 
 export const setGrant = mutation({
   args: {
-    actorUserId: v.id("users"),
     targetUserId: v.id("users"),
     environment: sharedEnvironmentValidator,
     enabled: v.boolean(),
     wrappedKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx, args.actorUserId);
-    await requireEnvironmentAccess(ctx, args.actorUserId, args.environment);
+    const actor = await requireAdmin(ctx);
+    await requireEnvironmentAccess(ctx, args.environment);
     const target = await ctx.db.get("users", args.targetUserId);
     if (!target || target.status !== "active") throw new Error("Target user is not active.");
     if (args.enabled && (!target.publicKeyJwk || !args.wrappedKey)) {
@@ -87,7 +85,7 @@ export const setGrant = mutation({
     if (existingGrant) {
       await ctx.db.patch("environmentGrants", existingGrant._id, {
         status: args.enabled ? "active" : "revoked",
-        grantedBy: args.actorUserId,
+        grantedBy: actor._id,
         grantedAt: args.enabled ? now : existingGrant.grantedAt,
         revokedAt: args.enabled ? undefined : now,
       });
@@ -96,7 +94,7 @@ export const setGrant = mutation({
         userId: args.targetUserId,
         environment: args.environment,
         status: "active",
-        grantedBy: args.actorUserId,
+        grantedBy: actor._id,
         grantedAt: now,
       });
     }
@@ -114,7 +112,7 @@ export const setGrant = mutation({
       if (envelope) {
         await ctx.db.patch("environmentKeyEnvelopes", envelope._id, {
           wrappedKey: args.wrappedKey,
-          createdBy: args.actorUserId,
+          createdBy: actor._id,
           createdAt: now,
         });
       } else {
@@ -123,7 +121,7 @@ export const setGrant = mutation({
           environment: args.environment,
           keyVersion: 1,
           wrappedKey: args.wrappedKey,
-          createdBy: args.actorUserId,
+          createdBy: actor._id,
           createdAt: now,
         });
       }
@@ -132,7 +130,7 @@ export const setGrant = mutation({
     }
 
     await appendAudit(ctx, {
-      actorUserId: args.actorUserId,
+      actorUserId: actor._id,
       action: args.enabled ? "environment.granted" : "environment.revoked",
       targetType: "user",
       targetId: args.targetUserId,

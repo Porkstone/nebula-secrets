@@ -25,9 +25,9 @@ async function ensureUniqueName(
 }
 
 export const list = query({
-  args: { actorUserId: v.id("users") },
-  handler: async (ctx, args) => {
-    await requireActor(ctx, args.actorUserId);
+  args: {},
+  handler: async (ctx) => {
+    await requireActor(ctx);
     return await ctx.db
       .query("projects")
       .withIndex("by_status", (q) => q.eq("status", "active"))
@@ -36,21 +36,21 @@ export const list = query({
 });
 
 export const create = mutation({
-  args: { actorUserId: v.id("users"), name: v.string() },
+  args: { name: v.string() },
   handler: async (ctx, args) => {
-    await requireActor(ctx, args.actorUserId);
+    const actor = await requireActor(ctx);
     const project = cleanProjectName(args.name);
     await ensureUniqueName(ctx, project.normalizedName);
     const now = Date.now();
     const projectId = await ctx.db.insert("projects", {
       ...project,
       status: "active",
-      createdBy: args.actorUserId,
+      createdBy: actor._id,
       createdAt: now,
       updatedAt: now,
     });
     await appendAudit(ctx, {
-      actorUserId: args.actorUserId,
+      actorUserId: actor._id,
       action: "project.created",
       targetType: "project",
       targetId: projectId,
@@ -61,12 +61,11 @@ export const create = mutation({
 
 export const rename = mutation({
   args: {
-    actorUserId: v.id("users"),
     projectId: v.id("projects"),
     name: v.string(),
   },
   handler: async (ctx, args) => {
-    await requireActor(ctx, args.actorUserId);
+    const actor = await requireActor(ctx);
     const existing = await ctx.db.get("projects", args.projectId);
     if (!existing || existing.status !== "active") throw new Error("Project not found.");
     if (existing.normalizedName === GENERAL_PROJECT_NORMALIZED_NAME) {
@@ -76,7 +75,7 @@ export const rename = mutation({
     await ensureUniqueName(ctx, project.normalizedName, args.projectId);
     await ctx.db.patch("projects", args.projectId, { ...project, updatedAt: Date.now() });
     await appendAudit(ctx, {
-      actorUserId: args.actorUserId,
+      actorUserId: actor._id,
       action: "project.renamed",
       targetType: "project",
       targetId: args.projectId,
@@ -86,9 +85,9 @@ export const rename = mutation({
 });
 
 export const archive = mutation({
-  args: { actorUserId: v.id("users"), projectId: v.id("projects") },
+  args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
-    await requireActor(ctx, args.actorUserId);
+    const actor = await requireActor(ctx);
     const existing = await ctx.db.get("projects", args.projectId);
     if (!existing || existing.status !== "active") throw new Error("Project not found.");
     if (existing.normalizedName === GENERAL_PROJECT_NORMALIZED_NAME) {
@@ -110,7 +109,7 @@ export const archive = mutation({
       updatedAt: now,
     });
     await appendAudit(ctx, {
-      actorUserId: args.actorUserId,
+      actorUserId: actor._id,
       action: "project.archived",
       targetType: "project",
       targetId: args.projectId,

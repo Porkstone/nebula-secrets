@@ -14,12 +14,11 @@ import { getOrCreateGeneralProject } from "./lib/projects";
 
 export const list = query({
   args: {
-    actorUserId: v.id("users"),
     environment: environmentValidator,
   },
   handler: async (ctx, args) => {
-    await requireEnvironmentAccess(ctx, args.actorUserId, args.environment);
-    const owner = ownerForEnvironment(args.environment, args.actorUserId);
+    const actor = await requireEnvironmentAccess(ctx, args.environment);
+    const owner = ownerForEnvironment(args.environment, actor._id);
     const definitions = await ctx.db
       .query("secretDefinitions")
       .withIndex("by_status", (q) => q.eq("status", "active"))
@@ -44,7 +43,6 @@ export const list = query({
 
 export const save = mutation({
   args: {
-    actorUserId: v.id("users"),
     environment: environmentValidator,
     secretId: v.optional(v.id("secretDefinitions")),
     projectId: v.optional(v.id("projects")),
@@ -55,8 +53,8 @@ export const save = mutation({
     expectedVersion: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await requireEnvironmentAccess(ctx, args.actorUserId, args.environment);
-    const projectId = args.projectId ?? await getOrCreateGeneralProject(ctx, args.actorUserId);
+    const actor = await requireEnvironmentAccess(ctx, args.environment);
+    const projectId = args.projectId ?? await getOrCreateGeneralProject(ctx, actor._id);
     const project = await ctx.db.get("projects", projectId);
     if (!project || project.status !== "active") throw new Error("Project not found.");
     const now = Date.now();
@@ -88,13 +86,13 @@ export const save = mutation({
         projectId,
         type: args.type,
         status: "active",
-        createdBy: args.actorUserId,
+        createdBy: actor._id,
         createdAt: now,
         updatedAt: now,
       });
     }
 
-    const owner = ownerForEnvironment(args.environment, args.actorUserId);
+    const owner = ownerForEnvironment(args.environment, actor._id);
     const existing = await ctx.db
       .query("secretValues")
       .withIndex("by_secretId_and_environment_and_ownerUserId", (q) =>
@@ -119,7 +117,7 @@ export const save = mutation({
       await ctx.db.patch("secretValues", existing._id, {
         payload: args.payload,
         version: existing.version + 1,
-        updatedBy: args.actorUserId,
+        updatedBy: actor._id,
         updatedAt: now,
       });
       valueId = existing._id;
@@ -130,12 +128,12 @@ export const save = mutation({
         ownerUserId: owner,
         payload: args.payload,
         version: 1,
-        updatedBy: args.actorUserId,
+        updatedBy: actor._id,
         updatedAt: now,
       });
     }
     await appendAudit(ctx, {
-      actorUserId: args.actorUserId,
+      actorUserId: actor._id,
       action: existing ? "secret.updated" : "secret.valueCreated",
       targetType: "secret",
       targetId: secretId,
@@ -148,13 +146,12 @@ export const save = mutation({
 
 export const setArchiveStatus = mutation({
   args: {
-    actorUserId: v.id("users"),
     secretId: v.id("secretDefinitions"),
     environment: environmentValidator,
     archived: v.boolean(),
   },
   handler: async (ctx, args) => {
-    await requireEnvironmentAccess(ctx, args.actorUserId, args.environment);
+    const actor = await requireEnvironmentAccess(ctx, args.environment);
     const definition = await ctx.db.get("secretDefinitions", args.secretId);
     if (!definition) throw new Error("Secret not found.");
     await ctx.db.patch("secretDefinitions", args.secretId, {
@@ -163,7 +160,7 @@ export const setArchiveStatus = mutation({
       updatedAt: Date.now(),
     });
     await appendAudit(ctx, {
-      actorUserId: args.actorUserId,
+      actorUserId: actor._id,
       action: args.archived ? "secret.archived" : "secret.restored",
       targetType: "secret",
       targetId: args.secretId,
@@ -175,14 +172,13 @@ export const setArchiveStatus = mutation({
 
 export const listVersions = query({
   args: {
-    actorUserId: v.id("users"),
     secretValueId: v.id("secretValues"),
   },
   handler: async (ctx, args) => {
     const value = await ctx.db.get("secretValues", args.secretValueId);
     if (!value) throw new Error("Secret value not found.");
-    await requireEnvironmentAccess(ctx, args.actorUserId, value.environment);
-    if (value.environment === "local" && value.ownerUserId !== args.actorUserId) {
+    const actor = await requireEnvironmentAccess(ctx, value.environment);
+    if (value.environment === "local" && value.ownerUserId !== actor._id) {
       throw new Error("Local values are private to their owner.");
     }
     const history = await ctx.db

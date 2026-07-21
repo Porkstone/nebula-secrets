@@ -12,6 +12,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@convex-dev/workos": "^0.0.3",
+    "@workos-inc/authkit-react": "^0.16.1",
     "convex": "^1.42.3",
     "lucide-react": "^1.25.0",
     "react": "^19.2.5",

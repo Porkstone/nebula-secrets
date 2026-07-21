@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light" />
+  <title>Nebula Secrets — WorkOS Authentication Implementation Plan</title>
+  <style>
+    :root {
+      --ink: #16231f;
+      --ink-soft: #53635d;
+      --ink-faint: #74827d;
+      --paper: #ffffff;
+      --canvas: #f3f7f5;
+      --surface-soft: #f8faf9;
+      --line: #dce5e1;
+      --line-strong: #c8d5cf;
+      --brand: #176b53;
+      --brand-dark: #0f4f3d;
+      --brand-soft: #e5f3ed;
+      --blue: #355f86;
+      --blue-soft: #eaf1f7;
+      --amber: #895f17;
+      --amber-soft: #fff4dc;
+      --red: #963e3e;
+      --red-soft: #fbecec;
+      --shadow: 0 18px 55px rgba(20, 50, 40, .08);
+      --radius: 16px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--canvas);
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--canvas); line-height: 1.6; }
+    a { color: var(--brand-dark); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+    a:hover { color: var(--brand); }
+    code, pre { font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace; }
+    code { padding: .1rem .32rem; border-radius: 5px; background: #edf2ef; font-size: .88em; }
+    p, ul, ol { margin: 0 0 1rem; }
+    ul, ol { padding-left: 1.25rem; }
+    li + li { margin-top: .38rem; }
+    h1, h2, h3, h4 { margin: 0; color: var(--ink); line-height: 1.18; letter-spacing: -.025em; }
+    h1 { max-width: 15ch; font-size: clamp(2.4rem, 6vw, 4.7rem); }
+    h2 { font-size: clamp(1.55rem, 3vw, 2rem); }
+    h3 { font-size: 1.08rem; }
+    h4 { font-size: .82rem; letter-spacing: .02em; text-transform: uppercase; }
+
+    .page-shell { display: grid; grid-template-columns: 250px minmax(0, 1fr); min-height: 100vh; }
+    .rail {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 1.35rem 1rem;
+      color: #dbe9e3;
+      background: #102b23;
+      overflow-y: auto;
+    }
+    .brand { display: flex; align-items: center; gap: .65rem; margin: 0 .35rem 1.7rem; color: white; font-weight: 720; letter-spacing: -.02em; }
+    .brand-mark { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; background: #d9eee6; color: var(--brand-dark); font-size: 1rem; }
+    .rail-label { margin: 0 .45rem .55rem; color: #83a79b; font-size: .65rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+    .rail nav { display: grid; gap: .15rem; }
+    .rail nav a { padding: .55rem .65rem; border-radius: 8px; color: #b7cdc5; font-size: .76rem; font-weight: 650; text-decoration: none; }
+    .rail nav a:hover { color: white; background: rgba(255,255,255,.07); }
+    .rail-note { margin-top: 1.6rem; padding: .85rem; border: 1px solid rgba(255,255,255,.12); border-radius: 11px; background: rgba(255,255,255,.04); font-size: .7rem; color: #afc6be; }
+    .rail-note strong { display: block; margin-bottom: .2rem; color: white; }
+
+    main { min-width: 0; }
+    .hero {
+      padding: clamp(2.5rem, 7vw, 6rem) clamp(1.25rem, 5vw, 5.5rem);
+      background:
+        radial-gradient(circle at 80% 10%, rgba(204, 233, 221, .72), transparent 24rem),
+        linear-gradient(145deg, #fbfdfc, #eef5f2);
+      border-bottom: 1px solid var(--line);
+    }
+    .hero-inner { width: min(1120px, 100%); margin: 0 auto; }
+    .eyebrow { display: inline-flex; align-items: center; gap: .4rem; margin-bottom: 1rem; color: var(--brand); font-size: .74rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+    .eyebrow::before { content: ""; width: 22px; height: 2px; background: currentColor; }
+    .hero-copy { max-width: 68ch; margin-top: 1.35rem; color: var(--ink-soft); font-size: 1.02rem; }
+    .hero-meta { display: flex; flex-wrap: wrap; gap: .65rem; margin-top: 1.6rem; }
+    .pill { display: inline-flex; align-items: center; gap: .35rem; padding: .34rem .58rem; border-radius: 999px; background: var(--brand-soft); color: var(--brand-dark); font-size: .69rem; font-weight: 750; }
+    .pill.neutral { background: #e9eeeb; color: var(--ink-soft); }
+
+    .content { width: min(1120px, calc(100% - 2.5rem)); margin: 0 auto; padding: 2.8rem 0 5rem; }
+    .section { scroll-margin-top: 1rem; padding: 2.4rem 0; border-bottom: 1px solid var(--line); }
+    .section:last-child { border-bottom: 0; }
+    .section-head { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 1.5rem; margin-bottom: 1.35rem; }
+    .section-kicker { color: var(--brand); font-size: .7rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+    .section-intro { max-width: 75ch; margin: .65rem 0 0; color: var(--ink-soft); }
+
+    .grid { display: grid; gap: 1rem; }
+    .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .card { padding: 1.2rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); box-shadow: 0 7px 24px rgba(25, 55, 45, .045); }
+    .card h3 { margin-bottom: .55rem; }
+    .card p:last-child, .card ul:last-child { margin-bottom: 0; }
+    .card p, .card li { color: var(--ink-soft); font-size: .82rem; }
+    .card-number { display: grid; place-items: center; width: 30px; height: 30px; margin-bottom: .85rem; border-radius: 9px; background: var(--brand-soft); color: var(--brand-dark); font-size: .72rem; font-weight: 850; }
+    .callout { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .85rem; margin: 1.2rem 0; padding: 1rem 1.1rem; border: 1px solid #ecd7a9; border-radius: 13px; background: var(--amber-soft); }
+    .callout .icon { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: white; color: var(--amber); font-weight: 900; }
+    .callout strong { display: block; margin-bottom: .2rem; font-size: .84rem; }
+    .callout p { margin: 0; color: #6f572d; font-size: .78rem; }
+    .callout.security { border-color: #cce3d9; background: var(--brand-soft); }
+    .callout.security .icon { color: var(--brand); }
+    .callout.security p { color: var(--brand-dark); }
+
+    .flow { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .7rem; align-items: stretch; }
+    .flow-step { position: relative; min-height: 116px; padding: .9rem; border: 1px solid var(--line); border-radius: 12px; background: white; }
+    .flow-step:not(:last-child)::after { content: "→"; position: absolute; z-index: 2; top: 50%; right: -.63rem; transform: translateY(-50%); color: var(--brand); font-weight: 850; }
+    .flow-step span { display: block; margin-bottom: .35rem; color: var(--brand); font-size: .64rem; font-weight: 800; text-transform: uppercase; letter-spacing: .07em; }
+    .flow-step strong { display: block; font-size: .82rem; line-height: 1.35; }
+    .flow-step small { display: block; margin-top: .42rem; color: var(--ink-faint); font-size: .68rem; line-height: 1.45; }
+
+    .layer-stack { display: grid; grid-template-columns: 1fr auto 1fr; gap: 1rem; align-items: stretch; }
+    .layer { padding: 1.2rem; border-radius: 15px; border: 1px solid var(--line); background: white; }
+    .layer h3 { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
+    .layer h3 span { padding: .23rem .45rem; border-radius: 999px; background: var(--blue-soft); color: var(--blue); font-size: .62rem; letter-spacing: .03em; }
+    .layer ul { margin: .8rem 0 0; color: var(--ink-soft); font-size: .78rem; }
+    .layer-arrow { align-self: center; color: var(--brand); font-size: 1.35rem; font-weight: 800; }
+
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; background: white; }
+    table { width: 100%; border-collapse: collapse; font-size: .76rem; }
+    th { padding: .72rem .8rem; background: #f0f5f2; color: var(--ink-soft); font-size: .65rem; letter-spacing: .05em; text-align: left; text-transform: uppercase; }
+    td { padding: .75rem .8rem; border-top: 1px solid var(--line); color: var(--ink-soft); vertical-align: top; }
+    td strong { color: var(--ink); }
+    .yes { color: var(--brand-dark); font-weight: 780; }
+    .no { color: var(--ink-faint); }
+    .conditional { color: var(--amber); font-weight: 760; }
+
+    .state-line { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; counter-reset: states; }
+    .state { position: relative; padding: 1rem; border: 1px solid var(--line); border-radius: 13px; background: white; counter-increment: states; }
+    .state::before { content: counter(states); display: grid; place-items: center; width: 24px; height: 24px; margin-bottom: .65rem; border-radius: 50%; color: white; background: var(--brand); font-size: .66rem; font-weight: 800; }
+    .state:not(:last-child)::after { content: ""; position: absolute; top: 1.75rem; right: -.75rem; width: .75rem; border-top: 2px solid #b7ccc3; }
+    .state strong { display: block; font-size: .82rem; }
+    .state small { display: block; margin-top: .35rem; color: var(--ink-faint); font-size: .69rem; line-height: 1.5; }
+
+    .phase-list { display: grid; gap: 1rem; }
+    .phase { display: grid; grid-template-columns: 105px minmax(0, 1fr); border: 1px solid var(--line); border-radius: var(--radius); background: white; overflow: hidden; }
+    .phase-label { padding: 1.2rem 1rem; background: #14372d; color: white; }
+    .phase-label span { display: block; color: #9fc0b5; font-size: .62rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .phase-label strong { display: block; margin-top: .25rem; font-size: 1.25rem; }
+    .phase-body { padding: 1.15rem 1.3rem; }
+    .phase-body header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: .75rem; }
+    .phase-body header p { max-width: 65ch; margin: .3rem 0 0; color: var(--ink-soft); font-size: .78rem; }
+    .phase-tag { flex: 0 0 auto; padding: .25rem .48rem; border-radius: 999px; background: var(--brand-soft); color: var(--brand-dark); font-size: .62rem; font-weight: 780; }
+    .work-items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem 1.2rem; margin: 0; padding: 0; list-style: none; }
+    .work-items li { position: relative; padding-left: 1rem; color: var(--ink-soft); font-size: .76rem; }
+    .work-items li::before { content: ""; position: absolute; top: .55rem; left: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--brand); }
+
+    .file-map { display: grid; gap: .65rem; }
+    .file-row { display: grid; grid-template-columns: minmax(190px, .8fr) minmax(0, 1.8fr); gap: 1rem; padding: .85rem 1rem; border: 1px solid var(--line); border-radius: 11px; background: white; }
+    .file-row code { justify-self: start; color: var(--brand-dark); font-weight: 700; }
+    .file-row span { color: var(--ink-soft); font-size: .77rem; }
+
+    .wireframe { padding: 1rem; border: 1px solid var(--line-strong); border-radius: 16px; background: #eaf0ed; }
+    .wire-top { display: flex; align-items: center; gap: .45rem; margin-bottom: .75rem; }
+    .wire-dot { width: 8px; height: 8px; border-radius: 50%; background: #9aacA5; }
+    .wire-page { display: grid; grid-template-columns: 150px minmax(0, 1fr); min-height: 365px; overflow: hidden; border-radius: 11px; background: white; box-shadow: 0 8px 25px rgba(18,45,36,.1); }
+    .wire-side { padding: 1rem .75rem; background: #15342b; color: white; }
+    .wire-brand { height: 22px; width: 90px; margin-bottom: 1.2rem; border-radius: 5px; background: #d7eae3; }
+    .wire-nav { display: grid; gap: .45rem; }
+    .wire-nav span { height: 24px; border-radius: 5px; background: rgba(255,255,255,.08); }
+    .wire-nav span.active { background: #2a5a4b; }
+    .wire-main { padding: 1.2rem; }
+    .wire-heading { margin-bottom: 1rem; }
+    .wire-heading strong { display: block; font-size: .95rem; }
+    .wire-heading span { display: block; color: var(--ink-faint); font-size: .66rem; }
+    .provider-card { padding: .9rem; border: 1px solid var(--line); border-radius: 11px; }
+    .provider-head { display: flex; align-items: center; gap: .7rem; }
+    .provider-logo { width: 35px; height: 35px; display: grid; place-items: center; border-radius: 9px; background: #171717; color: white; font-weight: 850; }
+    .provider-copy { display: grid; }
+    .provider-copy strong { font-size: .78rem; }
+    .provider-copy span { color: var(--ink-faint); font-size: .62rem; }
+    .status { margin-left: auto; padding: .2rem .42rem; border-radius: 999px; background: var(--amber-soft); color: var(--amber); font-size: .58rem; font-weight: 800; }
+    .checklist { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; margin-top: .8rem; }
+    .check { padding: .55rem; border-radius: 7px; background: var(--surface-soft); color: var(--ink-soft); font-size: .62rem; }
+    .check::before { content: "✓"; margin-right: .35rem; color: var(--brand); font-weight: 850; }
+    .check.pending::before { content: "○"; color: var(--amber); }
+    .wire-actions { display: flex; justify-content: flex-end; gap: .45rem; margin-top: .8rem; }
+    .wire-button { padding: .42rem .65rem; border-radius: 6px; background: #e9efec; color: var(--ink-soft); font-size: .61rem; font-weight: 760; }
+    .wire-button.primary { background: var(--brand); color: white; }
+
+    .check-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
+    .acceptance { padding: .85rem 1rem; border-left: 3px solid var(--brand); border-radius: 4px 10px 10px 4px; background: white; box-shadow: 0 4px 16px rgba(20, 50, 40, .04); }
+    .acceptance strong { display: block; margin-bottom: .25rem; font-size: .78rem; }
+    .acceptance span { display: block; color: var(--ink-soft); font-size: .72rem; }
+    .risk { border-left-color: var(--red); }
+
+    .decision-list { display: grid; gap: .7rem; }
+    .decision { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: .8rem; align-items: start; padding: .85rem 1rem; border: 1px solid var(--line); border-radius: 12px; background: white; }
+    .decision-id { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--blue-soft); color: var(--blue); font-size: .65rem; font-weight: 850; }
+    .decision strong { display: block; font-size: .8rem; }
+    .decision p { margin: .18rem 0 0; color: var(--ink-soft); font-size: .72rem; }
+    .recommendation { padding: .23rem .42rem; border-radius: 999px; background: var(--brand-soft); color: var(--brand-dark); font-size: .58rem; font-weight: 800; white-space: nowrap; }
+
+    .sources { font-size: .76rem; color: var(--ink-soft); }
+    .sources li + li { margin-top: .55rem; }
+    .footer { padding: 1.2rem; border-top: 1px solid var(--line); color: var(--ink-faint); background: #edf3f0; text-align: center; font-size: .68rem; }
+
+    @media (max-width: 980px) {
+      .page-shell { grid-template-columns: 1fr; }
+      .rail { position: relative; height: auto; padding: 1rem; }
+      .rail nav { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .rail nav a { text-align: center; }
+      .rail-note, .rail-label { display: none; }
+      .brand { margin-bottom: .9rem; }
+      .flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .flow-step:not(:last-child)::after { display: none; }
+      .flow-step:last-child { grid-column: 1 / -1; }
+      .grid.three { grid-template-columns: 1fr 1fr; }
+    }
+
+    @media (max-width: 720px) {
+      .hero { padding-block: 2.5rem; }
+      .content { width: min(100% - 1.4rem, 1120px); padding-top: 1.6rem; }
+      .rail nav { display: flex; overflow-x: auto; }
+      .rail nav a { flex: 0 0 auto; }
+      .section { padding: 1.8rem 0; }
+      .section-head { grid-template-columns: 1fr; gap: .4rem; }
+      .grid.two, .grid.three, .layer-stack, .check-grid { grid-template-columns: 1fr; }
+      .layer-arrow { transform: rotate(90deg); justify-self: center; }
+      .state-line { grid-template-columns: 1fr; }
+      .state:not(:last-child)::after { top: auto; right: auto; bottom: -.75rem; left: 1.7rem; height: .75rem; width: 0; border-top: 0; border-left: 2px solid #b7ccc3; }
+      .phase { grid-template-columns: 1fr; }
+      .phase-label { display: flex; align-items: baseline; gap: .5rem; padding: .65rem 1rem; }
+      .phase-label strong { margin: 0; }
+      .phase-body header { display: grid; }
+      .phase-tag { justify-self: start; }
+      .work-items { grid-template-columns: 1fr; }
+      .file-row { grid-template-columns: 1fr; gap: .4rem; }
+      .wire-page { grid-template-columns: 72px minmax(0, 1fr); }
+      .wire-brand { width: 42px; }
+      .checklist { grid-template-columns: 1fr; }
+      .decision { grid-template-columns: 34px minmax(0, 1fr); }
+      .recommendation { grid-column: 2; justify-self: start; }
+    }
+
+    @media print {
+      :root { background: white; }
+      body { background: white; }
+      .page-shell { display: block; }
+      .rail { display: none; }
+      .hero { padding: 1.8cm 1.2cm; background: white; }
+      .content { width: auto; margin: 0 1.2cm; padding: 0 0 1cm; }
+      .section { break-inside: avoid; padding: .8cm 0; }
+      .card, .phase, .table-wrap, .wireframe, .callout { box-shadow: none; break-inside: avoid; }
+      a { color: inherit; }
+      .footer { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page-shell">
+    <aside class="rail" aria-label="Document navigation">
+      <div class="brand"><span class="brand-mark">N</span><span>Nebula Secrets</span></div>
+      <div class="rail-label">Plan contents</div>
+      <nav>
+        <a href="#outcome">Outcome</a>
+        <a href="#findings">Current state</a>
+        <a href="#decisions">Architecture</a>
+        <a href="#roles">Roles</a>
+        <a href="#experience">Admin UI</a>
+        <a href="#data">Data model</a>
+        <a href="#delivery">Delivery phases</a>
+        <a href="#files">File impact</a>
+        <a href="#tests">Verification</a>
+        <a href="#rollout">Rollout</a>
+        <a href="#open-decisions">Review decisions</a>
+        <a href="#sources">Sources</a>
+      </nav>
+      <div class="rail-note">
+        <strong>Review draft</strong>
+        WorkOS AuthKit first. Provider-neutral seams are included only where they reduce future rework.
+      </div>
+    </aside>
+
+    <main>
+      <header class="hero">
+        <div class="hero-inner">
+          <span class="eyebrow">Authentication implementation plan</span>
+          <h1>WorkOS authentication for Nebula Secrets</h1>
+          <p class="hero-copy">A production-oriented plan to replace the spoofable development identity selector, bind WorkOS identities to Convex user records, and give System Administrators a safe UI for choosing, validating, and enforcing the authentication provider.</p>
+          <div class="hero-meta">
+            <span class="pill">Initial provider: WorkOS AuthKit</span>
+            <span class="pill">Frontend: React + Vite</span>
+            <span class="pill">Backend: Convex</span>
+            <span class="pill neutral">Prepared 21 July 2026</span>
+            <span class="pill neutral">Status: proposed</span>
+          </div>
+        </div>
+      </header>
+
+      <div class="content">
+        <section class="section" id="outcome">
+          <div class="section-head">
+            <div class="section-kicker">01 · Outcome</div>
+            <div>
+              <h2>What this implementation should deliver</h2>
+              <p class="section-intro">WorkOS becomes the only trusted identity source. Convex derives the caller from the verified JWT, while Nebula keeps ownership of application roles, suspension status, environment grants, and browser-held encryption keys.</p>
+            </div>
+          </div>
+
+          <div class="grid three">
+            <article class="card"><div class="card-number">A</div><h3>Authenticated sessions</h3><p>Users sign in through WorkOS AuthKit. The Vite client forwards a WorkOS access token through the Convex auth provider, and protected functions reject unauthenticated requests.</p></article>
+            <article class="card"><div class="card-number">B</div><h3>Trusted authorization</h3><p>Every Convex function resolves the current user from <code>ctx.auth.getUserIdentity()</code>. Client-supplied <code>actorUserId</code> values disappear from the public API.</p></article>
+            <article class="card"><div class="card-number">C</div><h3>System Admin control</h3><p>A dedicated Authentication page lets System Administrators stage WorkOS, review readiness, define account admission policy, and enforce sign-in without exposing provider secrets.</p></article>
+          </div>
+
+          <div class="callout security">
+            <div class="icon">✓</div>
+            <div><strong>Recommended scope boundary</strong><p>The initial release supports one WorkOS configuration per deployment and invitation-only account linking. It does not implement multi-tenant provider configurations, WorkOS Directory Sync, organization switching, or additional providers.</p></div>
+          </div>
+        </section>
+
+        <section class="section" id="findings">
+          <div class="section-head">
+            <div class="section-kicker">02 · Current state</div>
+            <div>
+              <h2>Repository findings that shape the plan</h2>
+              <p class="section-intro">Authentication is not an isolated login-screen change. The selected user ID currently flows through nearly every query and mutation, so the secure migration must replace that authorization contract end to end.</p>
+            </div>
+          </div>
+
+          <div class="grid two">
+            <article class="card">
+              <h3>Identity and access today</h3>
+              <ul>
+                <li><code>src/App.tsx</code> persists <code>nebula-selected-user</code> in local storage and exposes a switchable identity selector.</li>
+                <li>Public Convex functions accept <code>actorUserId</code> and trust it after a database role check.</li>
+                <li>The user schema has only <code>developer</code> and <code>admin</code> roles, with no external identity field.</li>
+                <li>The first bootstrap user is named “System Administrator” but is stored with the <code>admin</code> role.</li>
+              </ul>
+            </article>
+            <article class="card">
+              <h3>Provider integration today</h3>
+              <ul>
+                <li><code>src/main.tsx</code> uses plain <code>ConvexProvider</code>, so authenticated tokens are not sent.</li>
+                <li><code>convex/auth.config.ts</code> and root <code>convex.json</code> do not exist.</li>
+                <li>No WorkOS packages are installed.</li>
+                <li>Local development is fixed at <code>127.0.0.1:5173</code>; callback, CORS, and homepage values must use that exact origin.</li>
+              </ul>
+            </article>
+          </div>
+
+          <div class="callout">
+            <div class="icon">!</div>
+            <div><strong>Security consequence</strong><p>Adding AuthKit to the page without removing <code>actorUserId</code> authorization would leave the core spoofing vulnerability intact. Backend identity derivation is the release gate.</p></div>
+          </div>
+        </section>
+
+        <section class="section" id="decisions">
+          <div class="section-head">
+            <div class="section-kicker">03 · Architecture</div>
+            <div>
+              <h2>Provider configuration has two layers</h2>
+              <p class="section-intro">The safest design separates deployment credentials from runtime policy. System Administrators own the in-app policy and activation workflow; infrastructure credentials remain in the secret stores that already control the deployed frontend and Convex backend.</p>
+            </div>
+          </div>
+
+          <div class="layer-stack" aria-label="Two layers of authentication configuration">
+            <article class="layer">
+              <h3>Deployment adapter <span>operator-managed</span></h3>
+              <ul>
+                <li>WorkOS Client ID and API key</li>
+                <li>Callback, homepage, and CORS origins</li>
+                <li><code>convex/auth.config.ts</code> JWT validation</li>
+                <li>Vercel and Convex environment variables</li>
+                <li>Dev, preview, and production isolation</li>
+              </ul>
+            </article>
+            <div class="layer-arrow" aria-hidden="true">⇄</div>
+            <article class="layer">
+              <h3>Application policy <span>System Admin-managed</span></h3>
+              <ul>
+                <li>Selected provider: WorkOS</li>
+                <li>Draft, verified, or enforced state</li>
+                <li>Invitation-only admission policy</li>
+                <li>Allowed email domains, if enabled</li>
+                <li>Readiness checks and audit history</li>
+              </ul>
+            </article>
+          </div>
+
+          <div class="callout security">
+            <div class="icon">🔒</div>
+            <div><strong>Secret handling rule</strong><p>The Authentication UI must never request or persist <code>WORKOS_API_KEY</code>, deploy keys, cookie secrets, or access tokens. It may display public values, non-sensitive fingerprints, expected callback URLs, and links/instructions for the deployment operator.</p></div>
+          </div>
+
+          <h3 style="margin: 1.8rem 0 1rem;">Request path after enforcement</h3>
+          <div class="flow" aria-label="Authentication request path">
+            <div class="flow-step"><span>1 · Sign in</span><strong>WorkOS hosted AuthKit</strong><small>Authenticates the person and returns to the configured callback.</small></div>
+            <div class="flow-step"><span>2 · Client</span><strong>AuthKitProvider</strong><small>Owns browser auth state and obtains an access token.</small></div>
+            <div class="flow-step"><span>3 · Transport</span><strong>ConvexProviderWithAuthKit</strong><small>Attaches and refreshes the token for Convex requests.</small></div>
+            <div class="flow-step"><span>4 · Verify</span><strong>Convex auth config</strong><small>Validates WorkOS issuer, keys, algorithm, and audience.</small></div>
+            <div class="flow-step"><span>5 · Authorize</span><strong>Nebula access helpers</strong><small>Maps <code>tokenIdentifier</code> to a user, then checks status, role, and grants.</small></div>
+          </div>
+        </section>
+
+        <section class="section" id="roles">
+          <div class="section-head">
+            <div class="section-kicker">04 · Roles</div>
+            <div>
+              <h2>Add a real System Administrator role</h2>
+              <p class="section-intro">Provider configuration is a control-plane permission. It should not be automatically granted to every vault Admin. The proposed hierarchy makes <code>systemAdministrator</code> a superset of <code>admin</code> while keeping environment grants independent.</p>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Capability</th><th>Developer</th><th>Admin</th><th>System Administrator</th></tr></thead>
+              <tbody>
+                <tr><td><strong>Use permitted vault environments</strong></td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+                <tr><td><strong>Manage users, roles, and environment grants</strong></td><td class="no">No</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+                <tr><td><strong>View full administrative audit log</strong></td><td class="no">Own events</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+                <tr><td><strong>Configure and enforce authentication</strong></td><td class="no">No</td><td class="no">No</td><td class="yes">Yes</td></tr>
+                <tr><td><strong>Link or recover the first trusted identity</strong></td><td class="no">No</td><td class="no">No</td><td class="conditional">Bootstrap only</td></tr>
+                <tr><td><strong>Access shared environment secrets</strong></td><td class="conditional">With grant</td><td class="conditional">With grant</td><td class="conditional">With grant</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="callout">
+            <div class="icon">!</div>
+            <div><strong>Prevent lockout and privilege collapse</strong><p>The last active System Administrator cannot be suspended or demoted. Existing first-bootstrap Admin is promoted during migration; other Admins remain Admin unless explicitly promoted.</p></div>
+          </div>
+        </section>
+
+        <section class="section" id="experience">
+          <div class="section-head">
+            <div class="section-kicker">05 · Admin UI</div>
+            <div>
+              <h2>Authentication page and activation workflow</h2>
+              <p class="section-intro">Add “Authentication” under a System Administration navigation group. WorkOS is the only selectable provider in the first release; the data contract remains provider-aware so later adapters do not require another authorization redesign.</p>
+            </div>
+          </div>
+
+          <div class="wireframe" aria-label="Authentication administration wireframe">
+            <div class="wire-top"><span class="wire-dot"></span><span class="wire-dot"></span><span class="wire-dot"></span></div>
+            <div class="wire-page">
+              <aside class="wire-side"><div class="wire-brand"></div><div class="wire-nav"><span></span><span></span><span class="active"></span><span></span></div></aside>
+              <div class="wire-main">
+                <div class="wire-heading"><strong>Authentication</strong><span>Choose, validate, and enforce the workspace identity provider.</span></div>
+                <div class="provider-card">
+                  <div class="provider-head"><span class="provider-logo">W</span><span class="provider-copy"><strong>WorkOS AuthKit</strong><span>Hosted sign-in · JWT verified by Convex</span></span><span class="status">Needs verification</span></div>
+                  <div class="checklist"><div class="check">Provider selected</div><div class="check">Client ID detected</div><div class="check">Callback origin matches</div><div class="check pending">Authenticated test pending</div><div class="check pending">System Admin identity linked</div><div class="check pending">Production values present</div></div>
+                  <div class="wire-actions"><span class="wire-button">View setup instructions</span><span class="wire-button">Run checks</span><span class="wire-button primary">Enable authentication</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <h3 style="margin: 1.8rem 0 1rem;">Configuration states</h3>
+          <div class="state-line">
+            <div class="state"><strong>Unconfigured</strong><small>No provider policy exists. Development identity mode remains visibly unsafe and unavailable in production.</small></div>
+            <div class="state"><strong>Staged</strong><small>WorkOS is selected and deployment instructions are generated. Provider wrappers may run, but legacy access is still transitional.</small></div>
+            <div class="state"><strong>Verified</strong><small>Callback, token validation, current-user linking, and System Administrator access have passed preflight checks.</small></div>
+            <div class="state"><strong>Enforced</strong><small>All protected functions require a verified WorkOS identity; the selector and client-supplied actor IDs are removed.</small></div>
+          </div>
+
+          <div class="grid two" style="margin-top: 1rem;">
+            <article class="card"><h3>WorkOS configuration panel</h3><ul><li>Provider status and environment name</li><li>Public Client ID or masked fingerprint</li><li>Expected callback, homepage, and CORS origins</li><li>Managed-team or existing-team setup path</li><li>Copyable Convex/Vercel setup instructions</li><li>Readiness check results with remediation</li></ul></article>
+            <article class="card"><h3>Access policy panel</h3><ul><li>Invitation-only admission by default</li><li>Optional allow-list of verified email domains</li><li>Unknown-user outcome: deny and show contact guidance</li><li>Identity link status for each Nebula user</li><li>Session sign-out and suspended-user behavior</li><li>Audit trail for every configuration change</li></ul></article>
+          </div>
+        </section>
+
+        <section class="section" id="data">
+          <div class="section-head">
+            <div class="section-kicker">06 · Data & APIs</div>
+            <div>
+              <h2>Schema and authorization contract</h2>
+              <p class="section-intro">Nebula already needs first-class user documents for roles, grants, keys, and audit references. WorkOS identity fields should therefore be added to the existing <code>users</code> table rather than creating a parallel user model.</p>
+            </div>
+          </div>
+
+          <div class="grid two">
+            <article class="card">
+              <h3><code>users</code> additions</h3>
+              <ul>
+                <li><code>role</code> gains <code>systemAdministrator</code>.</li>
+                <li><code>authProvider?: "workos"</code>.</li>
+                <li><code>tokenIdentifier?: string</code>, indexed as <code>by_tokenIdentifier</code>.</li>
+                <li><code>providerUserId?</code> for support/audit display only; never the global authorization key.</li>
+                <li><code>emailVerified?</code>, <code>identityLinkedAt?</code>, and <code>lastAuthenticatedAt?</code>.</li>
+              </ul>
+            </article>
+            <article class="card">
+              <h3>New <code>authConfiguration</code> singleton</h3>
+              <ul>
+                <li><code>provider: "workos"</code>.</li>
+                <li><code>state: "staged" | "verified" | "enforced"</code>.</li>
+                <li><code>provisioningMode: "invitationOnly"</code> initially.</li>
+                <li>Optional allowed domains and public configuration fingerprint.</li>
+                <li><code>updatedBy</code>, <code>updatedAt</code>, <code>enforcedAt</code>.</li>
+                <li>No API keys, deploy keys, access tokens, or cookie secrets.</li>
+              </ul>
+            </article>
+          </div>
+
+          <h3 style="margin: 1.8rem 0 1rem;">Backend helper contract</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Helper / function</th><th>Responsibility</th><th>Security rule</th></tr></thead>
+              <tbody>
+                <tr><td><code>getCurrentUser(ctx)</code></td><td>Read WorkOS identity and resolve the indexed Nebula user.</td><td>Use canonical <code>identity.tokenIdentifier</code>; return null for no match.</td></tr>
+                <tr><td><code>requireActor(ctx)</code></td><td>Require an authenticated, linked, active user.</td><td>No caller-provided user ID.</td></tr>
+                <tr><td><code>requireAdmin(ctx)</code></td><td>Allow Admin or System Administrator.</td><td>Role is read from the linked Nebula user record.</td></tr>
+                <tr><td><code>requireSystemAdministrator(ctx)</code></td><td>Guard authentication configuration and privileged recovery.</td><td>Reject ordinary Admins.</td></tr>
+                <tr><td><code>users.linkCurrentIdentity</code></td><td>Attach the verified WorkOS identity to a pre-created user.</td><td>Exact normalized verified-email match, uniqueness check, and bootstrap restrictions.</td></tr>
+                <tr><td><code>auth.status</code></td><td>Return minimal public sign-in state and authenticated readiness details.</td><td>Never return secrets or full provider diagnostics to anonymous callers.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="callout security">
+            <div class="icon">✓</div>
+            <div><strong>Identity-linking rule</strong><p>Unknown WorkOS users are not auto-promoted or auto-created with vault access. A System Administrator pre-creates the Nebula user by email; first sign-in links only when WorkOS asserts that same verified email and the <code>tokenIdentifier</code> is not already linked.</p></div>
+          </div>
+        </section>
+
+        <section class="section" id="delivery">
+          <div class="section-head">
+            <div class="section-kicker">07 · Delivery</div>
+            <div>
+              <h2>Phased implementation plan</h2>
+              <p class="section-intro">The sequence deliberately keeps the application deployable while its schema and request contract change. Authentication is not declared complete until the legacy actor path is gone.</p>
+            </div>
+          </div>
+
+          <div class="phase-list">
+            <article class="phase">
+              <div class="phase-label"><span>Phase</span><strong>0</strong></div>
+              <div class="phase-body"><header><div><h3>Confirm rollout decisions</h3><p>Lock the operating model before code changes.</p></div><span class="phase-tag">Review gate</span></header><ul class="work-items"><li>Choose Convex-managed WorkOS team (recommended) or an existing WorkOS team.</li><li>Confirm production-ready rollout, including Vercel preview and production.</li><li>Approve the new System Administrator role and role hierarchy.</li><li>Confirm invitation-only account admission and exact verified-email linking.</li></ul></div>
+            </article>
+
+            <article class="phase">
+              <div class="phase-label"><span>Phase</span><strong>1</strong></div>
+              <div class="phase-body"><header><div><h3>Add the WorkOS deployment adapter</h3><p>Make WorkOS capable of issuing tokens that Convex can verify.</p></div><span class="phase-tag">Foundation</span></header><ul class="work-items"><li>Install <code>@workos-inc/authkit-react</code> and <code>@convex-dev/workos</code>.</li><li>Create <code>convex.json</code> with dev, preview, and prod AuthKit settings.</li><li>Use <code>http://127.0.0.1:5173/callback</code> for this repository’s actual local origin.</li><li>Create <code>convex/auth.config.ts</code> with the current WorkOS JWT providers.</li><li>Separate WorkOS staging and production credentials.</li><li>Add typed client env declarations and fail-fast configuration diagnostics.</li></ul></div>
+            </article>
+
+            <article class="phase">
+              <div class="phase-label"><span>Phase</span><strong>2</strong></div>
+              <div class="phase-body"><header><div><h3>Widen the schema and migrate roles</h3><p>Prepare existing documents for authenticated identity mapping without downtime.</p></div><span class="phase-tag">Deploy 1</span></header><ul class="work-items"><li>Add optional identity fields, the token index, and the new configuration table.</li><li>Extend role validators to accept <code>systemAdministrator</code>.</li><li>Update authorization code to treat System Administrator as an Admin superset.</li><li>Promote the original bootstrap Admin through a bounded migration.</li><li>Verify there is at least one active System Administrator.</li><li>Keep new identity fields optional until linking and verification finish.</li></ul></div>
+            </article>
+
+            <article class="phase">
+              <div class="phase-label"><span>Phase</span><strong>3</strong></div>
+              <div class="phase-body"><header><div><h3>Replace the backend trust boundary</h3><p>Move every authorization decision from client arguments to verified session identity.</p></div><span class="phase-tag">Security critical</span></header><ul class="work-items"><li>Implement current-user, Admin, System Administrator, and environment-access helpers.</li><li>Add identity-linking and current-user functions.</li><li>Remove <code>actorUserId</code> from access, audit, attachment, project, secret, user, and devtool APIs.</li><li>Populate actor, owner, updater, and audit IDs from the resolved user.</li><li>Keep target user IDs only where an administrator acts on another user.</li><li>Deny valid WorkOS sessions for suspended, unlinked, or unknown users.</li></ul></div>
+            </article>
+
+            <article class="phase">
+              <div class="phase-label"><span>Phase</span><strong>4</strong></div>
+              <div class="phase-body"><header><div><h3>Build the authenticated app shell</h3><p>Replace development identity selection with real sign-in, sign-out, callback, and session states.</p></div><span class="phase-tag">Frontend</span></header><ul class="work-items"><li>Wrap React with <code>AuthKitProvider</code> and <code>ConvexProviderWithAuthKit</code>.</li><li>Render loading, unauthenticated, linking, suspended, and authenticated states explicitly.</li><li>Add hosted sign-in and sign-out actions plus <code>/login</code> and callback handling.</li><li>Remove the identity selector, selected-user local storage, and development warning after enforcement.</li><li>Keep the device-key gate, keyed by the resolved Nebula user ID.</li><li>Show the signed-in WorkOS profile without treating it as authorization state.</li></ul></div>
+            </article>
+
+            <article class="phase">
+              <div class="phase-label"><span>Phase</span><strong>5</strong></div>
+              <div class="phase-body"><header><div><h3>Add System Administration → Authentication</h3><p>Give the privileged role a guided configuration and enforcement surface.</p></div><span class="phase-tag">Admin UX</span></header><ul class="work-items"><li>Add provider summary, WorkOS configuration, admission policy, and health sections.</li><li>Provide managed-team and existing-team setup instructions.</li><li>Show exact per-environment redirect, homepage, and CORS values.</li><li>Run backend token/current-user and client-origin readiness checks.</li><li>Require explicit confirmation before enforcement.</li><li>Audit configuration edits, verification, enablement, disablement, and identity links.</li></ul></div>
+            </article>
+
+            <article class="phase">
+              <div class="phase-label"><span>Phase</span><strong>6</strong></div>
+              <div class="phase-body"><header><div><h3>Verify, enforce, and narrow</h3><p>Complete the migration only after real WorkOS sign-in succeeds end to end.</p></div><span class="phase-tag">Release gate</span></header><ul class="work-items"><li>Run unit, Convex authorization, migration, UI, and browser flow tests.</li><li>Link and verify at least two users, including one System Administrator.</li><li>Exercise suspension, grant revocation, sign-out, refresh, and missing-device-key paths.</li><li>Enable WorkOS enforcement in staging, then production.</li><li>Remove all legacy identity code and temporary dual-read logic.</li><li>Narrow required identity fields only when every active user is linked.</li></ul></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="section" id="files">
+          <div class="section-head">
+            <div class="section-kicker">08 · File impact</div>
+            <div><h2>Expected repository changes</h2><p class="section-intro">The list is intentionally specific enough to split into reviewable pull requests without prescribing every implementation detail prematurely.</p></div>
+          </div>
+          <div class="file-map">
+            <div class="file-row"><code>package.json</code><span>Add the WorkOS React SDK and Convex WorkOS integration package.</span></div>
+            <div class="file-row"><code>convex.json</code><span>New AuthKit auto-configuration for the Vite dev origin, Vercel previews, and production.</span></div>
+            <div class="file-row"><code>convex/auth.config.ts</code><span>New WorkOS JWT issuer, JWKS, algorithm, and application ID configuration.</span></div>
+            <div class="file-row"><code>convex/schema.ts</code><span>Add System Administrator role, optional identity fields/index, and authentication configuration table.</span></div>
+            <div class="file-row"><code>convex/lib/access.ts</code><span>Resolve the actor from <code>ctx.auth</code>; add System Administrator and active-user guards.</span></div>
+            <div class="file-row"><code>convex/users.ts</code><span>Add current-user/linking functions; update user management to server-derived actors.</span></div>
+            <div class="file-row"><code>convex/authSettings.ts</code><span>New minimal public status, privileged configuration, readiness, and enforcement APIs.</span></div>
+            <div class="file-row"><code>convex/{access,audit,attachments,projects,secrets,devtools}.ts</code><span>Remove client-supplied actor IDs and obtain the current user through shared helpers.</span></div>
+            <div class="file-row"><code>convex/migrations.ts</code><span>Promote the bootstrap user and optionally backfill identity-related defaults using widen–migrate–narrow.</span></div>
+            <div class="file-row"><code>src/main.tsx</code><span>Replace the plain Convex provider with AuthKit and the WorkOS-aware Convex provider.</span></div>
+            <div class="file-row"><code>src/App.tsx</code><span>Add auth gates and signed-in shell; remove the identity selector and all <code>actorUserId</code> calls.</span></div>
+            <div class="file-row"><code>src/features/auth/*</code><span>New sign-in, account-linking, denied/suspended, callback, and configuration components.</span></div>
+            <div class="file-row"><code>src/index.css</code><span>Styles for auth states, Authentication admin panels, health checks, and responsive layouts.</span></div>
+            <div class="file-row"><code>src/vite-env.d.ts</code><span>Type required public WorkOS environment variables.</span></div>
+            <div class="file-row"><code>README.md</code><span>Replace the deferred-auth warning with setup, deployment, migration, recovery, and validation guidance.</span></div>
+          </div>
+        </section>
+
+        <section class="section" id="tests">
+          <div class="section-head">
+            <div class="section-kicker">09 · Verification</div>
+            <div><h2>Acceptance criteria and test matrix</h2><p class="section-intro">The security property to prove is simple: changing a user ID in a request can no longer change the caller, because public protected APIs do not accept an actor ID.</p></div>
+          </div>
+
+          <div class="check-grid">
+            <div class="acceptance"><strong>Authentication</strong><span>Unauthenticated calls fail; signed-in WorkOS users reach Convex with a validated identity.</span></div>
+            <div class="acceptance"><strong>Identity mapping</strong><span>Verified, pre-created users link once; duplicate token or email links are rejected.</span></div>
+            <div class="acceptance"><strong>Authorization</strong><span>Role × environment × ownership combinations pass or fail exactly as designed.</span></div>
+            <div class="acceptance"><strong>System Administration</strong><span>Only System Administrators can read privileged diagnostics or change auth policy.</span></div>
+            <div class="acceptance"><strong>Suspension</strong><span>A valid WorkOS session for a suspended user cannot read keys, secrets, or admin data.</span></div>
+            <div class="acceptance"><strong>Encryption continuity</strong><span>Existing device keys and envelopes remain bound to the same Convex user document IDs.</span></div>
+            <div class="acceptance"><strong>Provider configuration</strong><span>Client ID, callback, issuer/JWKS, and environment isolation are validated before enforcement.</span></div>
+            <div class="acceptance"><strong>Auditability</strong><span>Identity links, auth policy changes, enablement, denials, and role changes create privacy-safe events.</span></div>
+            <div class="acceptance"><strong>Session lifecycle</strong><span>Login, callback, refresh, sign-out, expired session, and revoked access behave predictably.</span></div>
+            <div class="acceptance"><strong>Responsive UI</strong><span>Sign-in, account-state, and System Administration pages remain usable at 320px and desktop widths.</span></div>
+          </div>
+
+          <div class="callout security">
+            <div class="icon">✓</div>
+            <div><strong>Release definition of done</strong><p><code>npm test</code>, <code>npm run lint</code>, <code>npm run build</code>, and <code>npx convex dev --once</code> pass; a real WorkOS staging login returns to <code>/callback</code>; <code>useConvexAuth()</code> becomes authenticated; and a protected Convex query resolves the expected Nebula user.</p></div>
+          </div>
+        </section>
+
+        <section class="section" id="rollout">
+          <div class="section-head">
+            <div class="section-kicker">10 · Rollout</div>
+            <div><h2>Safe activation and rollback</h2><p class="section-intro">Use separate WorkOS staging and production environments. The application should never silently fall back to the legacy selector when an enforced deployment is misconfigured.</p></div>
+          </div>
+
+          <div class="grid two">
+            <article class="card"><h3>Activation sequence</h3><ol><li>Deploy schema widening and WorkOS provider wiring to development.</li><li>Promote and link the first System Administrator.</li><li>Verify a second non-privileged account and all device-key paths.</li><li>Configure and test a Vercel preview deployment against WorkOS staging.</li><li>Provision distinct production credentials and HTTPS callback origins.</li><li>Enable enforcement, monitor denials and callback failures, then remove legacy code.</li></ol></article>
+            <article class="card"><h3>Rollback strategy</h3><ol><li>Before final narrowing, roll back application enforcement without deleting identity links.</li><li>Keep the old role value readable during the migration window.</li><li>Do not delete auth audit events or provider fingerprints.</li><li>Never expose a production fallback that accepts <code>actorUserId</code>.</li><li>If provider access fails after enforcement, show a service-unavailable/auth-configuration screen and use the documented operator recovery process.</li></ol></article>
+          </div>
+
+          <div class="grid three" style="margin-top: 1rem;">
+            <article class="card"><h3>Metric</h3><p>Sign-in success/failure and callback validation failures, without logging tokens or secret material.</p></article>
+            <article class="card"><h3>Metric</h3><p>Unknown, unlinked, and suspended-user denials, grouped by non-sensitive reason.</p></article>
+            <article class="card"><h3>Metric</h3><p>System Administrator count and provider-readiness state, with alerts for zero active privileged users.</p></article>
+          </div>
+        </section>
+
+        <section class="section" id="open-decisions">
+          <div class="section-head">
+            <div class="section-kicker">11 · Review decisions</div>
+            <div><h2>Choices to approve before implementation</h2><p class="section-intro">The plan can proceed with the recommendations below. They are called out because changing them later would materially alter configuration, migration, or access-control work.</p></div>
+          </div>
+          <div class="decision-list">
+            <div class="decision"><span class="decision-id">D1</span><div><strong>WorkOS ownership model</strong><p>Use Convex-managed WorkOS for provisioning convenience, or attach an existing WorkOS team.</p></div><span class="recommendation">Convex-managed</span></div>
+            <div class="decision"><span class="decision-id">D2</span><div><strong>Rollout target</strong><p>Cover development only, or include preview and production configuration in the first implementation.</p></div><span class="recommendation">Production-ready</span></div>
+            <div class="decision"><span class="decision-id">D3</span><div><strong>Privileged role</strong><p>Add <code>systemAdministrator</code> as an Admin superset with exclusive auth-provider control.</p></div><span class="recommendation">Approve</span></div>
+            <div class="decision"><span class="decision-id">D4</span><div><strong>User admission</strong><p>Require a pre-created Nebula user and exact verified-email match before identity linking.</p></div><span class="recommendation">Invitation-only</span></div>
+            <div class="decision"><span class="decision-id">D5</span><div><strong>Credential boundary</strong><p>Keep provider secrets in Convex/Vercel/WorkOS control planes; the app UI manages only safe policy and readiness metadata.</p></div><span class="recommendation">Approve</span></div>
+            <div class="decision"><span class="decision-id">D6</span><div><strong>Organization model</strong><p>Use one WorkOS environment/application per Nebula deployment; defer WorkOS organization switching and multi-tenancy.</p></div><span class="recommendation">Single workspace</span></div>
+          </div>
+        </section>
+
+        <section class="section" id="sources">
+          <div class="section-head">
+            <div class="section-kicker">12 · Sources</div>
+            <div><h2>Primary implementation references</h2><p class="section-intro">These should be rechecked at implementation time because provider CLIs and SDK integration details can change.</p></div>
+          </div>
+          <ul class="sources">
+            <li><a href="https://docs.convex.dev/auth/authkit/add-to-app">Convex — Adding WorkOS AuthKit to an Existing App</a>: Vite packages, providers, environment variables, UI auth states, and authenticated Convex calls.</li>
+            <li><a href="https://docs.convex.dev/auth/authkit/">Convex — WorkOS AuthKit integration</a>: managed/existing team paths, JWT configuration, environment separation, and end-to-end token flow.</li>
+            <li><a href="https://docs.convex.dev/auth/authkit/auto-provision">Convex — Automatic AuthKit Configuration</a>: <code>convex.json</code>, dev/preview/prod behavior, and credential discovery.</li>
+            <li><a href="https://docs.convex.dev/auth/functions-auth">Convex — Auth in Functions</a>: <code>ctx.auth.getUserIdentity()</code> and canonical <code>tokenIdentifier</code>.</li>
+            <li><a href="https://docs.convex.dev/auth/database-auth">Convex — Storing Users in the Convex Database</a>: linking authenticated identities to application user records.</li>
+            <li><a href="https://workos.com/docs/sdks/authkit-react">WorkOS — AuthKit React SDK</a>: sign-in, callback/login route, sign-out, and session hooks.</li>
+            <li><a href="https://workos.com/docs/authkit/environments">WorkOS — Staging and production environments</a>: environment isolation, production HTTPS, credentials, and go-live checklist.</li>
+          </ul>
+        </section>
+      </div>
+
+      <footer class="footer">Nebula Secrets · WorkOS Authentication Implementation Plan · Standalone review document</footer>
+    </main>
+  </div>
+</body>
+</html>

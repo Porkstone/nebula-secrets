@@ -20,12 +20,42 @@ export default defineSchema({
   users: defineTable({
     displayName: v.string(),
     email: v.string(),
-    role: v.union(v.literal("developer"), v.literal("admin")),
+    role: v.union(
+      v.literal("developer"),
+      v.literal("admin"),
+      v.literal("systemAdministrator"),
+    ),
     status: v.union(v.literal("active"), v.literal("suspended")),
     publicKeyJwk: v.optional(v.string()),
+    authProvider: v.optional(v.literal("workos")),
+    tokenIdentifier: v.optional(v.string()),
+    providerUserId: v.optional(v.string()),
+    identityLinkedAt: v.optional(v.number()),
+    lastAuthenticatedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_email", ["email"]),
+  })
+    .index("by_email", ["email"])
+    .index("by_role", ["role"])
+    .index("by_tokenIdentifier", ["tokenIdentifier"]),
+
+  authConfiguration: defineTable({
+    singletonKey: v.literal("authentication"),
+    provider: v.literal("workos"),
+    state: v.union(
+      v.literal("staged"),
+      v.literal("verified"),
+      v.literal("enforced"),
+    ),
+    provisioningMode: v.literal("invitationOnly"),
+    clientId: v.string(),
+    redirectUri: v.string(),
+    allowedEmailDomains: v.array(v.string()),
+    updatedBy: v.id("users"),
+    updatedAt: v.number(),
+    verifiedAt: v.optional(v.number()),
+    enforcedAt: v.optional(v.number()),
+  }).index("by_singletonKey", ["singletonKey"]),
 
   environmentGrants: defineTable({
     userId: v.id("users"),
