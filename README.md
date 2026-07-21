@@ -55,9 +55,28 @@ The Convex tests cover one-time bootstrap, role enforcement, Local-value isolati
 - `src/index.css` — responsive application styling
 - `secrets-management-plan.html` — original architecture and delivery plan
 
-## Vercel
+## Deployment
 
-`vercel.json` configures the Vite production build, `dist` output, and SPA fallback. Add `VITE_CONVEX_URL` to the Vercel project before deploying; deployment itself is intentionally not performed by the local implementation workflow.
+Nebula Secrets is designed to use two managed deployment services:
+
+- **Vercel** hosts the Vite-generated frontend and serves the single-page application.
+- **Convex** hosts the backend functions, database schema, encrypted records, access-control data, audit events, and encrypted file attachments.
+
+The included `vercel.json` configures the Vite production build, `dist` output directory, and SPA fallback. With its current `npm run build` command, deploy the Convex backend separately using:
+
+```powershell
+npx convex deploy
+```
+
+Then add `VITE_CONVEX_URL` to the Vercel project's Production environment, using the URL of the production Convex deployment. This URL is included in the browser bundle and is not a secret. Do not use the development deployment URL from `.env.local` in production.
+
+Alternatively, Vercel can deploy both parts during its build. Create a production Convex deploy key, store it in Vercel as the sensitive Production variable `CONVEX_DEPLOY_KEY`, and change the Vercel build command to:
+
+```text
+npx convex deploy --cmd-url-env-var-name VITE_CONVEX_URL --cmd "npm run build"
+```
+
+In this configuration, Convex deploys the backend and provides `VITE_CONVEX_URL` to the frontend build automatically. Authentication is still intentionally deferred in this MVP, so a deployed instance must contain test data only until authenticated identities replace the development identity selector.
 
 ## License
 
