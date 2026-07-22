@@ -113,6 +113,11 @@ export const initializeWorkspace = action({
   args: {
     displayName: v.string(),
     publicKeyJwk: v.string(),
+    publicSigningKeyJwk: v.string(),
+    deviceLabel: v.string(),
+    keyFingerprint: v.string(),
+    browserName: v.string(),
+    platform: v.string(),
     keyEnvelopes: v.array(
       v.object({
         environment: environmentValidator,
@@ -120,11 +125,28 @@ export const initializeWorkspace = action({
       }),
     ),
   },
-  handler: async (ctx, args): Promise<Id<"users">> => {
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ userId: Id<"users">; deviceId: Id<"devices"> }> => {
     const identity = await resolveVerifiedWorkosIdentity(ctx);
-    return await ctx.runMutation(internal.bootstrap.initializeVerifiedWorkos, {
+    const userId: Id<"users"> = await ctx.runMutation(
+      internal.bootstrap.initializeVerifiedWorkos,
+      {
       ...identity,
       ...args,
-    });
+      },
+    );
+    const deviceId: Id<"devices"> | null = await ctx.runQuery(
+      internal.devices.getFirstActiveDeviceIdForUser,
+      { userId },
+    );
+    if (!deviceId) {
+      workosError(
+        "BOOTSTRAP_DEVICE_NOT_FOUND",
+        "The initial device could not be loaded after workspace setup.",
+      );
+    }
+    return { userId, deviceId };
   },
 });

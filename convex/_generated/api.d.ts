@@ -14,6 +14,7 @@ import type * as audit from "../audit.js";
 import type * as authSettings from "../authSettings.js";
 import type * as bootstrap from "../bootstrap.js";
 import type * as devtools from "../devtools.js";
+import type * as devices from "../devices.js";
 import type * as lib_access from "../lib/access.js";
 import type * as lib_projects from "../lib/projects.js";
 import type * as migrations from "../migrations.js";
@@ -36,6 +37,7 @@ declare const fullApi: ApiFromModules<{
   authSettings: typeof authSettings;
   bootstrap: typeof bootstrap;
   devtools: typeof devtools;
+  devices: typeof devices;
   "lib/access": typeof lib_access;
   "lib/projects": typeof lib_projects;
   migrations: typeof migrations;

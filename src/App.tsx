@@ -55,14 +55,21 @@ import {
   decryptAttachmentMetadata,
   decryptPayload,
   clearDeviceKeys,
+  createDeviceRequestProof,
+  currentBrowserDescription,
+  deviceKeyFingerprint,
   encryptAttachment,
   encryptPayload,
   generateDeviceKeyMaterial,
   generateEnvironmentKey,
-  hasDeviceKey,
+  getCurrentDeviceKey,
+  getLegacyDeviceKey,
   persistDeviceKey,
+  removeDeviceKey,
   secretAad,
+  signDeviceApproval,
   unwrapEnvironmentKey,
+  upgradeLegacyDeviceKey,
   wrapEnvironmentKey,
   type AttachmentMetadata,
   type Environment,
@@ -80,6 +87,28 @@ type AppUser = {
   authProvider: "workos" | null;
   isIdentityLinked: boolean;
   identityLinkedAt: number | null;
+};
+
+type AppDevice = {
+  _id: Id<"devices">;
+  userId: Id<"users">;
+  label: string;
+  publicEncryptionKeyJwk: string;
+  publicSigningKeyJwk: string | null;
+  keyFingerprint: string | null;
+  browserName: string | null;
+  platform: string | null;
+  status: "pending" | "active" | "revoked";
+  verificationCode: string | null;
+  requestedAt: number;
+  expiresAt: number | null;
+  approvedAt: number | null;
+  approvedByDeviceId: Id<"devices"> | null;
+  claimedAt: number | null;
+  lastUsedAt: number | null;
+  revokedAt: number | null;
+  legacy: boolean;
+  isExpired: boolean;
 };
 
 type SecretRow = {
@@ -233,21 +262,37 @@ function BootstrapWorkspace({
     setError("");
     try {
       const device = await generateDeviceKeyMaterial();
+      const { browserName, platform } = currentBrowserDescription();
+      const fingerprint = await deviceKeyFingerprint(
+        device.publicEncryptionKeyJwk,
+      );
       const keyEnvelopes = await Promise.all(
         environments.map(async (environment) => {
           const key = await generateEnvironmentKey();
           return {
             environment,
-            wrappedKey: await wrapEnvironmentKey(key, device.publicJwk),
+            wrappedKey: await wrapEnvironmentKey(
+              key,
+              device.publicEncryptionKeyJwk,
+            ),
           };
         }),
       );
-      const adminId = await initialize({
+      const initialized = await initialize({
         displayName,
-        publicKeyJwk: device.publicJwk,
+        publicKeyJwk: device.publicEncryptionKeyJwk,
+        publicSigningKeyJwk: device.publicSigningKeyJwk,
+        deviceLabel: `${browserName} on ${platform}`,
+        keyFingerprint: fingerprint,
+        browserName,
+        platform,
         keyEnvelopes,
       });
-      await persistDeviceKey(adminId, device);
+      await persistDeviceKey(
+        initialized.userId,
+        initialized.deviceId,
+        device,
+      );
       window.location.reload();
     } catch (cause) {
       setError(errorMessage(cause, "Workspace setup failed."));
@@ -395,35 +440,140 @@ function DeviceGate({
   users: AppUser[];
   onSignOut: () => void;
 }) {
+  const claimLegacyDevice = useMutation(api.devices.claimLegacyDevice);
+  const [now] = useState(() => Date.now());
+  const devices = useQuery(api.devices.listMine, { now });
   const [deviceState, setDeviceState] = useState<
-    "checking" | "ready" | "missing"
-  >("checking");
+    | { status: "checking" }
+    | { status: "none" }
+    | { status: "ready"; deviceId: Id<"devices"> }
+    | { status: "error"; message: string }
+  >({ status: "checking" });
 
   useEffect(() => {
     let cancelled = false;
-    void hasDeviceKey(user._id).then((present) => {
-      if (!cancelled) setDeviceState(present ? "ready" : "missing");
+    void (async () => {
+      const current = await getCurrentDeviceKey(user._id);
+      if (current) {
+        if (!cancelled) {
+          setDeviceState({ status: "ready", deviceId: current.deviceId as Id<"devices"> });
+        }
+        return;
+      }
+      const legacy = await getLegacyDeviceKey(user._id);
+      if (!legacy) {
+        if (!cancelled) setDeviceState({ status: "none" });
+        return;
+      }
+      const upgraded = await upgradeLegacyDeviceKey(legacy);
+      const { browserName, platform } = currentBrowserDescription();
+      const keyFingerprint = await deviceKeyFingerprint(
+        upgraded.publicEncryptionKeyJwk,
+      );
+      const deviceId = await claimLegacyDevice({
+        label: `${browserName} on ${platform}`,
+        publicEncryptionKeyJwk: upgraded.publicEncryptionKeyJwk,
+        publicSigningKeyJwk: upgraded.publicSigningKeyJwk,
+        keyFingerprint,
+        browserName,
+        platform,
+      });
+      await persistDeviceKey(user._id, deviceId, upgraded);
+      if (!cancelled) setDeviceState({ status: "ready", deviceId });
+    })().catch((cause: unknown) => {
+      if (!cancelled) {
+        setDeviceState({
+          status: "error",
+          message: errorMessage(cause, "Unable to load this browser's device key."),
+        });
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [user._id]);
+  }, [claimLegacyDevice, user._id]);
 
-  if (deviceState === "checking") return <LoadingScreen />;
-  if (!user.hasPublicKey) {
-    return <EnrollDevice user={user} onReady={() => setDeviceState("ready")} />;
+  if (deviceState.status === "checking" || devices === undefined) {
+    return <LoadingScreen />;
   }
-  if (deviceState === "missing") {
-    return <MissingDeviceKey user={user} onSignOut={onSignOut} />;
+  if (deviceState.status === "error") {
+    return (
+      <DeviceUnavailable
+        user={user}
+        message={deviceState.message}
+        onSignOut={onSignOut}
+      />
+    );
   }
-  return <Dashboard user={user} users={users} onSignOut={onSignOut} />;
+  if (deviceState.status === "none") {
+    if (!user.hasPublicKey && devices.length === 0) {
+      return (
+        <EnrollFirstDevice
+          user={user}
+          onReady={(deviceId) =>
+            setDeviceState({ status: "ready", deviceId })
+          }
+        />
+      );
+    }
+    return (
+      <RequestDeviceAccess
+        user={user}
+        onReady={(deviceId) => setDeviceState({ status: "ready", deviceId })}
+        onSignOut={onSignOut}
+      />
+    );
+  }
+
+  const currentDevice = devices.find(
+    (device) => device._id === deviceState.deviceId,
+  );
+  if (!currentDevice) {
+    return (
+      <DeviceUnavailable
+        user={user}
+        message="This browser's device registration no longer exists."
+        onSignOut={onSignOut}
+      />
+    );
+  }
+  if (currentDevice.status === "pending") {
+    return (
+      <PendingDeviceAccess
+        user={user}
+        device={currentDevice}
+        onReset={() => setDeviceState({ status: "none" })}
+        onSignOut={onSignOut}
+      />
+    );
+  }
+  if (currentDevice.status === "revoked") {
+    return (
+      <RevokedDeviceAccess
+        user={user}
+        deviceId={currentDevice._id}
+        onReset={() => setDeviceState({ status: "none" })}
+        onSignOut={onSignOut}
+      />
+    );
+  }
+  return (
+    <Dashboard
+      user={user}
+      users={users}
+      deviceId={currentDevice._id}
+      onSignOut={onSignOut}
+    />
+  );
 }
 
-function MissingDeviceKey({
+function DeviceUnavailable({
   user,
+  message,
   onSignOut,
 }: {
   user: AppUser;
+  message: string;
   onSignOut: () => void;
 }) {
   const resetWorkspace = useMutation(api.devtools.resetWorkspace);
@@ -463,11 +613,7 @@ function MissingDeviceKey({
           <ShieldAlert size={24} />
         </span>
         <h2>Private key unavailable in this browser</h2>
-        <p>
-          This usually means the workspace was initialized in a different
-          browser or profile. The matching private key never leaves that
-          browser, so Convex cannot recover or reveal it.
-        </p>
+        <p>{message}</p>
         <button className="button" onClick={onSignOut}>
           <LogOut size={16} /> Sign out and use another account
         </button>
@@ -496,23 +642,25 @@ function MissingDeviceKey({
           </div>
         )}
         <p className="fine-print">
-          If the data matters, reopen the browser that initialized this
-          identity. Production recovery will require authenticated device
-          approval or dual control.
+          If the data matters, reopen an approved browser. A System
+          Administrator can restore shared environment access, but cannot
+          recover private Local keys.
         </p>
       </div>
     </div>
   );
 }
 
-function EnrollDevice({
+function EnrollFirstDevice({
   user,
   onReady,
 }: {
   user: AppUser;
-  onReady: () => void;
+  onReady: (deviceId: Id<"devices">) => void;
 }) {
-  const enroll = useMutation(api.users.enrollDevice);
+  const enroll = useMutation(api.devices.enrollFirst);
+  const { browserName, platform } = currentBrowserDescription();
+  const [label, setLabel] = useState(`${browserName} on ${platform}`);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -524,11 +672,22 @@ function EnrollDevice({
       const localKey = await generateEnvironmentKey();
       const localKeyEnvelope = await wrapEnvironmentKey(
         localKey,
-        device.publicJwk,
+        device.publicEncryptionKeyJwk,
       );
-      await enroll({ publicKeyJwk: device.publicJwk, localKeyEnvelope });
-      await persistDeviceKey(user._id, device);
-      onReady();
+      const keyFingerprint = await deviceKeyFingerprint(
+        device.publicEncryptionKeyJwk,
+      );
+      const deviceId = await enroll({
+        label,
+        publicEncryptionKeyJwk: device.publicEncryptionKeyJwk,
+        publicSigningKeyJwk: device.publicSigningKeyJwk,
+        keyFingerprint,
+        browserName,
+        platform,
+        localKeyEnvelope,
+      });
+      await persistDeviceKey(user._id, deviceId, device);
+      onReady(deviceId);
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Device enrollment failed.",
@@ -550,6 +709,14 @@ function EnrollDevice({
           environment key. The private key is stored as a non-exportable Web
           Crypto key.
         </p>
+        <label>
+          Device name
+          <input
+            value={label}
+            maxLength={80}
+            onChange={(event) => setLabel(event.target.value)}
+          />
+        </label>
         {error && <ErrorNotice message={error} />}
         <button
           className="button primary"
@@ -568,21 +735,199 @@ function EnrollDevice({
   );
 }
 
+function RequestDeviceAccess({
+  user,
+  onReady,
+  onSignOut,
+}: {
+  user: AppUser;
+  onReady: (deviceId: Id<"devices">) => void;
+  onSignOut: () => void;
+}) {
+  const requestEnrollment = useMutation(api.devices.requestEnrollment);
+  const { browserName, platform } = currentBrowserDescription();
+  const [label, setLabel] = useState(`${browserName} on ${platform}`);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function requestAccess() {
+    setBusy(true);
+    setError("");
+    try {
+      const device = await generateDeviceKeyMaterial();
+      const keyFingerprint = await deviceKeyFingerprint(
+        device.publicEncryptionKeyJwk,
+      );
+      const proof = createDeviceRequestProof();
+      const request = await requestEnrollment({
+        label,
+        publicEncryptionKeyJwk: device.publicEncryptionKeyJwk,
+        publicSigningKeyJwk: device.publicSigningKeyJwk,
+        keyFingerprint,
+        browserName,
+        platform,
+        ...proof,
+      });
+      await persistDeviceKey(user._id, request.deviceId, device);
+      onReady(request.deviceId);
+    } catch (cause) {
+      setError(errorMessage(cause, "Unable to request device access."));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="center-screen padded">
+      <div className="panel device-enroll">
+        <span className="icon-disc warning">
+          <Laptop size={25} />
+        </span>
+        <span className="eyebrow">New browser</span>
+        <h2>Request access for this browser</h2>
+        <p>
+          This browser will create its own non-exportable keys. Approve the
+          request from one of your existing active browsers to transfer access.
+        </p>
+        <label>
+          Device name
+          <input
+            value={label}
+            maxLength={80}
+            onChange={(event) => setLabel(event.target.value)}
+          />
+        </label>
+        {error && <ErrorNotice message={error} />}
+        <button
+          className="button primary"
+          disabled={busy || !label.trim()}
+          onClick={() => void requestAccess()}
+        >
+          {busy ? <LoaderCircle className="spin" size={17} /> : <Fingerprint size={17} />}
+          {busy ? "Creating request…" : "Request device access"}
+        </button>
+        <button className="button ghost" onClick={onSignOut}>
+          <LogOut size={16} /> Sign out
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PendingDeviceAccess({
+  user,
+  device,
+  onReset,
+  onSignOut,
+}: {
+  user: AppUser;
+  device: AppDevice;
+  onReset: () => void;
+  onSignOut: () => void;
+}) {
+  const reject = useMutation(api.devices.rejectEnrollment);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function cancelRequest() {
+    setBusy(true);
+    setError("");
+    try {
+      await reject({ targetDeviceId: device._id });
+      await removeDeviceKey(user._id, device._id);
+      onReset();
+    } catch (cause) {
+      setError(errorMessage(cause, "Unable to cancel the request."));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="center-screen padded">
+      <div className="panel device-enroll pending-device-card">
+        <span className="icon-disc warning">
+          <Clock3 size={24} />
+        </span>
+        <span className="eyebrow">Approval required</span>
+        <h2>{device.isExpired ? "Device request expired" : "Approve this browser"}</h2>
+        <p>
+          Open Nebula Secrets in an existing approved browser, choose Devices,
+          and compare this verification code before approving.
+        </p>
+        <strong className="verification-code">
+          {device.verificationCode ?? "Expired"}
+        </strong>
+        <div className="device-request-summary">
+          <span>{device.label}</span>
+          <span>{device.browserName} · {device.platform}</span>
+          {device.expiresAt && <span>Expires {formatRelativeTime(device.expiresAt)}</span>}
+        </div>
+        {error && <ErrorNotice message={error} />}
+        <button className="button" disabled={busy} onClick={() => void cancelRequest()}>
+          {busy ? <LoaderCircle className="spin" size={16} /> : <X size={16} />}
+          {device.isExpired ? "Remove and request again" : "Cancel request"}
+        </button>
+        <button className="button ghost" onClick={onSignOut}>
+          <LogOut size={16} /> Sign out
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RevokedDeviceAccess({
+  user,
+  deviceId,
+  onReset,
+  onSignOut,
+}: {
+  user: AppUser;
+  deviceId: Id<"devices">;
+  onReset: () => void;
+  onSignOut: () => void;
+}) {
+  async function requestAgain() {
+    await removeDeviceKey(user._id, deviceId);
+    onReset();
+  }
+  return (
+    <div className="center-screen padded">
+      <div className="panel key-missing">
+        <span className="icon-disc warning"><ShieldAlert size={24} /></span>
+        <h2>This device has been revoked</h2>
+        <p>Its server-held key envelopes have been removed. Request access again to register fresh browser keys.</p>
+        <button className="button primary" onClick={() => void requestAgain()}>
+          <Fingerprint size={16} /> Request access again
+        </button>
+        <button className="button ghost" onClick={onSignOut}>
+          <LogOut size={16} /> Sign out
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Dashboard({
   user,
   users,
+  deviceId,
   onSignOut,
 }: {
   user: AppUser;
   users: AppUser[];
+  deviceId: Id<"devices">;
   onSignOut: () => void;
 }) {
-  const access = useQuery(api.access.listMine, {});
+  const access = useQuery(api.access.listMine, { deviceId });
+  const touchDevice = useMutation(api.devices.touch);
   const [section, setSection] = useState<
-    "vault" | "admin" | "authentication" | "audit"
+    "vault" | "devices" | "admin" | "authentication" | "audit"
   >("vault");
   const [environment, setEnvironment] = useState<Environment>("local");
   const [mobileNav, setMobileNav] = useState(false);
+
+  useEffect(() => {
+    void touchDevice({ deviceId });
+  }, [deviceId, touchDevice]);
 
   const allowedEnvironments = useMemo(
     () =>
@@ -612,6 +957,15 @@ function Dashboard({
             }}
           >
             <LayoutGrid size={18} /> Vault
+          </button>
+          <button
+            className={section === "devices" ? "nav-item active" : "nav-item"}
+            onClick={() => {
+              setSection("devices");
+              setMobileNav(false);
+            }}
+          >
+            <Laptop size={18} /> Devices
           </button>
           {user.role !== "developer" && (
             <button
@@ -669,6 +1023,8 @@ function Dashboard({
             <span>
               {section === "vault"
                 ? "Secrets vault"
+                : section === "devices"
+                  ? "Device access"
                 : section === "admin"
                   ? "Administration"
                   : section === "authentication"
@@ -708,13 +1064,17 @@ function Dashboard({
           {section === "vault" && (
             <Vault
               user={user}
+              deviceId={deviceId}
               environment={environment}
               allowedEnvironments={allowedEnvironments}
               onEnvironmentChange={setEnvironment}
             />
           )}
+          {section === "devices" && (
+            <DevicesArea user={user} deviceId={deviceId} />
+          )}
           {section === "admin" && user.role !== "developer" && (
-            <AdminArea user={user} />
+            <AdminArea user={user} deviceId={deviceId} />
           )}
           {section === "authentication" &&
             user.role === "systemAdministrator" && <AuthenticationAdmin />}
@@ -726,13 +1086,13 @@ function Dashboard({
 }
 
 function useEnvironmentKey(
-  userId: Id<"users">,
+  deviceId: Id<"devices">,
   environment: Environment,
   allowed: boolean,
 ) {
   const envelope = useQuery(
     api.access.getKeyEnvelope,
-    allowed ? { environment } : "skip",
+    allowed ? { environment, deviceId } : "skip",
   );
   const [state, setState] = useState<{
     source: string | null;
@@ -746,7 +1106,7 @@ function useEnvironmentKey(
       return () => {
         cancelled = true;
       };
-    void unwrapEnvironmentKey(userId, envelope.wrappedKey)
+    void unwrapEnvironmentKey(deviceId, envelope.wrappedKey)
       .then((key) => {
         if (!cancelled)
           setState({ source: envelope.wrappedKey, key, error: "" });
@@ -765,7 +1125,7 @@ function useEnvironmentKey(
     return () => {
       cancelled = true;
     };
-  }, [envelope, environment, userId]);
+  }, [deviceId, envelope, environment]);
 
   const current = envelope && state.source === envelope.wrappedKey;
   return {
@@ -777,18 +1137,20 @@ function useEnvironmentKey(
 
 function Vault({
   user,
+  deviceId,
   environment,
   allowedEnvironments,
   onEnvironmentChange,
 }: {
   user: AppUser;
+  deviceId: Id<"devices">;
   environment: Environment;
   allowedEnvironments: Environment[];
   onEnvironmentChange: (environment: Environment) => void;
 }) {
   const allowed = allowedEnvironments.includes(environment);
   const { environmentKey, keyError } = useEnvironmentKey(
-    user._id,
+    deviceId,
     environment,
     allowed,
   );
@@ -2183,7 +2545,270 @@ function AuthenticationAdmin() {
   );
 }
 
-function AdminArea({ user }: { user: AppUser }) {
+function DevicesArea({
+  user,
+  deviceId,
+}: {
+  user: AppUser;
+  deviceId: Id<"devices">;
+}) {
+  const convex = useConvex();
+  const [now] = useState(() => Date.now());
+  const devices = useQuery(api.devices.listMine, { now });
+  const workspaceDevices = useQuery(
+    api.devices.listForSystemAdministrator,
+    user.role === "systemAdministrator" ? { now } : "skip",
+  );
+  const approveEnrollment = useMutation(api.devices.approveEnrollment);
+  const rejectEnrollment = useMutation(api.devices.rejectEnrollment);
+  const renameDevice = useMutation(api.devices.rename);
+  const revokeDevice = useMutation(api.devices.revoke);
+  const [busyTarget, setBusyTarget] = useState("");
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  async function approve(targetDeviceId: Id<"devices">) {
+    setBusyTarget(targetDeviceId);
+    setError("");
+    setMessage("");
+    try {
+      const context = await convex.query(api.devices.getApprovalContext, {
+        targetDeviceId,
+        approverDeviceId: deviceId,
+        now: Date.now(),
+      });
+      const envelopes = await Promise.all(
+        context.envelopes.map(async (envelope) => {
+          const environmentKey = await unwrapEnvironmentKey(
+            deviceId,
+            envelope.wrappedKey,
+          );
+          return {
+            environment: envelope.environment,
+            keyVersion: envelope.keyVersion,
+            wrappedKey: await wrapEnvironmentKey(
+              environmentKey,
+              context.targetPublicEncryptionKeyJwk,
+            ),
+          };
+        }),
+      );
+      const signature = await signDeviceApproval(deviceId, {
+        targetDeviceId: context.targetDeviceId,
+        approverDeviceId: context.approverDeviceId,
+        approvalNonce: context.approvalNonce,
+        envelopes,
+      });
+      await approveEnrollment({
+        targetDeviceId,
+        approverDeviceId: deviceId,
+        envelopes,
+        signature,
+      });
+      setMessage("The new browser is approved and can now unlock its environments.");
+    } catch (cause) {
+      setError(errorMessage(cause, "Unable to approve the device."));
+    } finally {
+      setBusyTarget("");
+    }
+  }
+
+  async function reject(targetDeviceId: Id<"devices">) {
+    setBusyTarget(targetDeviceId);
+    setError("");
+    try {
+      await rejectEnrollment({ targetDeviceId });
+    } catch (cause) {
+      setError(errorMessage(cause, "Unable to reject the device."));
+    } finally {
+      setBusyTarget("");
+    }
+  }
+
+  async function rename(device: AppDevice) {
+    const label = window.prompt("Device name", device.label)?.trim();
+    if (!label || label === device.label) return;
+    setBusyTarget(device._id);
+    setError("");
+    try {
+      await renameDevice({ deviceId: device._id, label });
+    } catch (cause) {
+      setError(errorMessage(cause, "Unable to rename the device."));
+    } finally {
+      setBusyTarget("");
+    }
+  }
+
+  async function revoke(targetDeviceId: Id<"devices">, label: string) {
+    if (
+      !window.confirm(
+        `Revoke ${label}? Its server-held key envelopes will be removed immediately.`,
+      )
+    ) {
+      return;
+    }
+    setBusyTarget(targetDeviceId);
+    setError("");
+    try {
+      await revokeDevice({ deviceId: targetDeviceId });
+    } catch (cause) {
+      setError(errorMessage(cause, "Unable to revoke the device."));
+    } finally {
+      setBusyTarget("");
+    }
+  }
+
+  if (!devices) return <LoadingPanel />;
+  const pending = devices.filter(
+    (device) => device.status === "pending" && !device.isExpired,
+  );
+  const active = devices.filter((device) => device.status === "active");
+  const revoked = devices.filter(
+    (device) => device.status === "revoked" || device.isExpired,
+  );
+
+  return (
+    <>
+      <div className="page-actions">
+        <div>
+          <h1>Devices</h1>
+          <p>
+            Each browser has separate non-exportable keys. Approvals transfer
+            encrypted environment access without copying private keys.
+          </p>
+        </div>
+      </div>
+      {error && <ErrorNotice message={error} />}
+      {message && <div className="notice success"><Check size={16} /> {message}</div>}
+
+      {pending.length > 0 && (
+        <section className="device-section">
+          <div className="section-title-row">
+            <div>
+              <span className="eyebrow">Action required</span>
+              <h2>Pending requests</h2>
+            </div>
+            <span className="count-badge">{pending.length}</span>
+          </div>
+          <div className="device-grid">
+            {pending.map((device) => (
+              <article className="panel device-card pending" key={device._id}>
+                <div className="device-card-heading">
+                  <span className="icon-disc warning"><Laptop size={19} /></span>
+                  <div><h3>{device.label}</h3><p>{device.browserName} · {device.platform}</p></div>
+                </div>
+                <div className="device-code-row">
+                  <span>Verification code</span>
+                  <strong>{device.verificationCode}</strong>
+                </div>
+                <dl className="device-meta">
+                  <div><dt>Requested</dt><dd>{formatRelativeTime(device.requestedAt)}</dd></div>
+                  <div><dt>Fingerprint</dt><dd>{device.keyFingerprint?.slice(0, 16) ?? "Unavailable"}</dd></div>
+                </dl>
+                <div className="device-actions">
+                  <button
+                    className="button primary"
+                    disabled={Boolean(busyTarget)}
+                    onClick={() => void approve(device._id)}
+                  >
+                    {busyTarget === device._id ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />}
+                    Approve
+                  </button>
+                  <button
+                    className="button ghost"
+                    disabled={Boolean(busyTarget)}
+                    onClick={() => void reject(device._id)}
+                  ><X size={16} /> Reject</button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="device-section">
+        <div className="section-title-row"><div><span className="eyebrow">Trusted browsers</span><h2>Active devices</h2></div></div>
+        <div className="device-grid">
+          {active.map((device) => (
+            <article className="panel device-card" key={device._id}>
+              <div className="device-card-heading">
+                <span className="icon-disc"><Laptop size={19} /></span>
+                <div>
+                  <h3>{device.label}</h3>
+                  <p>{device.browserName ?? "Legacy browser"} · {device.platform ?? "Platform unavailable"}</p>
+                </div>
+                {device._id === deviceId && <span className="current-device-badge">This browser</span>}
+              </div>
+              <dl className="device-meta">
+                <div><dt>Approved</dt><dd>{device.approvedAt ? formatRelativeTime(device.approvedAt) : "Legacy"}</dd></div>
+                <div><dt>Last used</dt><dd>{device.lastUsedAt ? formatRelativeTime(device.lastUsedAt) : "Not recorded"}</dd></div>
+                <div><dt>Fingerprint</dt><dd>{device.keyFingerprint?.slice(0, 16) ?? "Pending claim"}</dd></div>
+              </dl>
+              <div className="device-actions">
+                <button className="button ghost" disabled={Boolean(busyTarget)} onClick={() => void rename(device)}>
+                  <Pencil size={15} /> Rename
+                </button>
+                <button className="button destructive ghost" disabled={Boolean(busyTarget)} onClick={() => void revoke(device._id, device.label)}>
+                  <Trash2 size={15} /> Revoke
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      {revoked.length > 0 && (
+        <section className="device-section subdued-device-section">
+          <div className="section-title-row"><div><span className="eyebrow">History</span><h2>Revoked or expired</h2></div></div>
+          <div className="device-history-list">
+            {revoked.map((device) => (
+              <div key={device._id} className="device-history-row">
+                <span><strong>{device.label}</strong><small>{device.browserName} · {device.platform}</small></span>
+                <span className="key-state">{device.isExpired ? "Expired" : "Revoked"}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {user.role === "systemAdministrator" && workspaceDevices && (
+        <section className="device-section">
+          <div className="section-title-row"><div><span className="eyebrow">System administration</span><h2>Workspace devices</h2></div></div>
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead><tr><th>User</th><th>Device</th><th>Status</th><th>Last used</th><th>Action</th></tr></thead>
+              <tbody>
+                {workspaceDevices.map((device) => (
+                  <tr key={device._id}>
+                    <td>{device.userId === user._id ? user.displayName : device.userId}</td>
+                    <td><strong>{device.label}</strong><small className="table-subline">{device.browserName} · {device.platform}</small></td>
+                    <td><span className={device.status === "active" ? "key-state ready" : "key-state"}>{device.status}</span></td>
+                    <td>{device.lastUsedAt ? formatRelativeTime(device.lastUsedAt) : "—"}</td>
+                    <td>
+                      {device.status !== "revoked" && (
+                        <button className="button destructive ghost compact" disabled={Boolean(busyTarget)} onClick={() => void revoke(device._id, device.label)}>
+                          Revoke
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+    </>
+  );
+}
+
+function AdminArea({
+  user,
+  deviceId,
+}: {
+  user: AppUser;
+  deviceId: Id<"devices">;
+}) {
   const convex = useConvex();
   const users = useQuery(api.users.listForAdmin, {});
   const createUser = useMutation(api.users.create);
@@ -2202,11 +2827,11 @@ function AdminArea({ user }: { user: AppUser }) {
     setError("");
     try {
       if (enabled) {
-        const [targetPublicKey, actorEnvelope] = await Promise.all([
-          convex.query(api.users.getPublicKey, { targetUserId }),
-          convex.query(api.access.getKeyEnvelope, { environment }),
+        const [targetDevices, actorEnvelope] = await Promise.all([
+          convex.query(api.users.getActiveDevicePublicKeys, { targetUserId }),
+          convex.query(api.access.getKeyEnvelope, { environment, deviceId }),
         ]);
-        if (!targetPublicKey)
+        if (targetDevices.length === 0)
           throw new Error(
             "The target user must enroll a device before receiving environment access.",
           );
@@ -2215,18 +2840,24 @@ function AdminArea({ user }: { user: AppUser }) {
             "This Admin does not hold the environment key required to complete the grant.",
           );
         const environmentKey = await unwrapEnvironmentKey(
-          user._id,
+          deviceId,
           actorEnvelope.wrappedKey,
         );
-        const wrappedKey = await wrapEnvironmentKey(
-          environmentKey,
-          targetPublicKey,
+        const deviceEnvelopes = await Promise.all(
+          targetDevices.map(async (targetDevice) => ({
+            deviceId: targetDevice.deviceId,
+            keyVersion: 1,
+            wrappedKey: await wrapEnvironmentKey(
+              environmentKey,
+              targetDevice.publicEncryptionKeyJwk,
+            ),
+          })),
         );
         await setGrant({
           targetUserId,
           environment,
           enabled: true,
-          wrappedKey,
+          deviceEnvelopes,
         });
       } else {
         await setGrant({ targetUserId, environment, enabled: false });
@@ -2265,7 +2896,7 @@ function AdminArea({ user }: { user: AppUser }) {
                 <th>User</th>
                 <th>Role</th>
                 <th>Status</th>
-                <th>Device key</th>
+                <th>Devices</th>
                 <th>Development</th>
                 <th>UAT</th>
                 <th>Production</th>
@@ -2327,15 +2958,17 @@ function AdminArea({ user }: { user: AppUser }) {
                   <td>
                     <span
                       className={
-                        target.hasPublicKey ? "key-state ready" : "key-state"
+                        target.activeDeviceCount > 0 ? "key-state ready" : "key-state"
                       }
                     >
-                      {target.hasPublicKey ? (
+                      {target.activeDeviceCount > 0 ? (
                         <Check size={13} />
                       ) : (
                         <MoreHorizontal size={13} />
                       )}
-                      {target.hasPublicKey ? "Enrolled" : "Pending"}
+                      {target.activeDeviceCount > 0
+                        ? `${target.activeDeviceCount} active`
+                        : "Pending"}
                     </span>
                   </td>
                   {(["development", "uat", "production"] as const).map(

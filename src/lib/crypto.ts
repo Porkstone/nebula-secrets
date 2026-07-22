@@ -27,25 +27,51 @@ export type AttachmentMetadata = {
   originalSize: number;
 };
 
-type DeviceKeyMaterial = {
+export type DeviceKeyMaterial = {
+  encryptionPrivateKey: CryptoKey;
+  encryptionPublicKey: CryptoKey;
+  publicEncryptionKeyJwk: string;
+  signingPrivateKey: CryptoKey;
+  signingPublicKey: CryptoKey;
+  publicSigningKeyJwk: string;
+};
+
+type LegacyDeviceKeyMaterial = {
   privateKey: CryptoKey;
   publicKey: CryptoKey;
   publicJwk: string;
 };
 
-type StoredDeviceKey = DeviceKeyMaterial & { userId: string };
+export type StoredDeviceKey = DeviceKeyMaterial & {
+  deviceId: string;
+  userId: string;
+};
+
+type CurrentDeviceReference = { userId: string; deviceId: string };
+type StoredLegacyDeviceKey = LegacyDeviceKeyMaterial & { userId: string };
 
 const DATABASE_NAME = "nebula-secrets-keys";
-const STORE_NAME = "deviceKeys";
+const DATABASE_VERSION = 2;
+const LEGACY_STORE_NAME = "deviceKeys";
+const DEVICE_STORE_NAME = "browserDevices";
+const CURRENT_DEVICE_STORE_NAME = "currentDevices";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 function openKeyDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DATABASE_NAME, 1);
+    const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
     request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains(STORE_NAME)) {
-        request.result.createObjectStore(STORE_NAME, { keyPath: "userId" });
+      if (!request.result.objectStoreNames.contains(LEGACY_STORE_NAME)) {
+        request.result.createObjectStore(LEGACY_STORE_NAME, { keyPath: "userId" });
+      }
+      if (!request.result.objectStoreNames.contains(DEVICE_STORE_NAME)) {
+        request.result.createObjectStore(DEVICE_STORE_NAME, { keyPath: "deviceId" });
+      }
+      if (!request.result.objectStoreNames.contains(CURRENT_DEVICE_STORE_NAME)) {
+        request.result.createObjectStore(CURRENT_DEVICE_STORE_NAME, {
+          keyPath: "userId",
+        });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -61,7 +87,7 @@ function requestResult<T>(request: IDBRequest<T>): Promise<T> {
 }
 
 export async function generateDeviceKeyMaterial(): Promise<DeviceKeyMaterial> {
-  const generated = await crypto.subtle.generateKey(
+  const encryptionKeys = await crypto.subtle.generateKey(
     {
       name: "RSA-OAEP",
       modulusLength: 2048,
@@ -71,46 +97,143 @@ export async function generateDeviceKeyMaterial(): Promise<DeviceKeyMaterial> {
     true,
     ["encrypt", "decrypt"],
   );
-  const [publicJwk, privatePkcs8] = await Promise.all([
-    crypto.subtle.exportKey("jwk", generated.publicKey),
-    crypto.subtle.exportKey("pkcs8", generated.privateKey),
+  const [publicEncryptionJwk, encryptionPrivatePkcs8] = await Promise.all([
+    crypto.subtle.exportKey("jwk", encryptionKeys.publicKey),
+    crypto.subtle.exportKey("pkcs8", encryptionKeys.privateKey),
   ]);
-  const privateKey = await crypto.subtle.importKey(
+  const encryptionPrivateKey = await crypto.subtle.importKey(
     "pkcs8",
-    privatePkcs8,
+    encryptionPrivatePkcs8,
     { name: "RSA-OAEP", hash: "SHA-256" },
     false,
     ["decrypt"],
   );
-  new Uint8Array(privatePkcs8).fill(0);
+  new Uint8Array(encryptionPrivatePkcs8).fill(0);
+  const signing = await generateSigningKeyMaterial();
   return {
-    privateKey,
-    publicKey: generated.publicKey,
-    publicJwk: JSON.stringify(publicJwk),
+    encryptionPrivateKey,
+    encryptionPublicKey: encryptionKeys.publicKey,
+    publicEncryptionKeyJwk: JSON.stringify(publicEncryptionJwk),
+    ...signing,
   };
 }
 
-export async function persistDeviceKey(userId: string, material: DeviceKeyMaterial) {
-  const database = await openKeyDatabase();
-  const transaction = database.transaction(STORE_NAME, "readwrite");
-  await requestResult(
-    transaction.objectStore(STORE_NAME).put({ userId, ...material } satisfies StoredDeviceKey),
+async function generateSigningKeyMaterial() {
+  const signingKeys = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
   );
+  const [publicSigningJwk, signingPrivatePkcs8] = await Promise.all([
+    crypto.subtle.exportKey("jwk", signingKeys.publicKey),
+    crypto.subtle.exportKey("pkcs8", signingKeys.privateKey),
+  ]);
+  const signingPrivateKey = await crypto.subtle.importKey(
+    "pkcs8",
+    signingPrivatePkcs8,
+    { name: "ECDSA", namedCurve: "P-256" },
+    false,
+    ["sign"],
+  );
+  new Uint8Array(signingPrivatePkcs8).fill(0);
+  return {
+    signingPrivateKey,
+    signingPublicKey: signingKeys.publicKey,
+    publicSigningKeyJwk: JSON.stringify(publicSigningJwk),
+  };
+}
+
+export async function upgradeLegacyDeviceKey(
+  legacy: StoredLegacyDeviceKey,
+): Promise<DeviceKeyMaterial> {
+  return {
+    encryptionPrivateKey: legacy.privateKey,
+    encryptionPublicKey: legacy.publicKey,
+    publicEncryptionKeyJwk: legacy.publicJwk,
+    ...(await generateSigningKeyMaterial()),
+  };
+}
+
+export async function persistDeviceKey(
+  userId: string,
+  deviceId: string,
+  material: DeviceKeyMaterial,
+) {
+  const database = await openKeyDatabase();
+  const transaction = database.transaction(
+    [DEVICE_STORE_NAME, CURRENT_DEVICE_STORE_NAME],
+    "readwrite",
+  );
+  await Promise.all([
+    requestResult(
+      transaction
+        .objectStore(DEVICE_STORE_NAME)
+        .put({ userId, deviceId, ...material } satisfies StoredDeviceKey),
+    ),
+    requestResult(
+      transaction
+        .objectStore(CURRENT_DEVICE_STORE_NAME)
+        .put({ userId, deviceId } satisfies CurrentDeviceReference),
+    ),
+  ]);
   database.close();
 }
 
-export async function getDeviceKey(userId: string): Promise<StoredDeviceKey | null> {
+export async function getDeviceKey(deviceId: string): Promise<StoredDeviceKey | null> {
   const database = await openKeyDatabase();
-  const transaction = database.transaction(STORE_NAME, "readonly");
+  const transaction = database.transaction(DEVICE_STORE_NAME, "readonly");
   const result = await requestResult(
-    transaction.objectStore(STORE_NAME).get(userId) as IDBRequest<StoredDeviceKey | undefined>,
+    transaction.objectStore(DEVICE_STORE_NAME).get(deviceId) as IDBRequest<
+      StoredDeviceKey | undefined
+    >,
   );
   database.close();
   return result ?? null;
 }
 
-export async function hasDeviceKey(userId: string) {
-  return Boolean(await getDeviceKey(userId));
+export async function getCurrentDeviceKey(userId: string) {
+  const database = await openKeyDatabase();
+  const transaction = database.transaction(CURRENT_DEVICE_STORE_NAME, "readonly");
+  const reference = await requestResult(
+    transaction.objectStore(CURRENT_DEVICE_STORE_NAME).get(userId) as IDBRequest<
+      CurrentDeviceReference | undefined
+    >,
+  );
+  database.close();
+  return reference ? await getDeviceKey(reference.deviceId) : null;
+}
+
+export async function getLegacyDeviceKey(
+  userId: string,
+): Promise<StoredLegacyDeviceKey | null> {
+  const database = await openKeyDatabase();
+  const transaction = database.transaction(LEGACY_STORE_NAME, "readonly");
+  const result = await requestResult(
+    transaction.objectStore(LEGACY_STORE_NAME).get(userId) as IDBRequest<
+      StoredLegacyDeviceKey | undefined
+    >,
+  );
+  database.close();
+  return result ?? null;
+}
+
+export async function removeDeviceKey(userId: string, deviceId: string) {
+  const database = await openKeyDatabase();
+  const transaction = database.transaction(
+    [DEVICE_STORE_NAME, CURRENT_DEVICE_STORE_NAME],
+    "readwrite",
+  );
+  const referenceStore = transaction.objectStore(CURRENT_DEVICE_STORE_NAME);
+  const reference = await requestResult(
+    referenceStore.get(userId) as IDBRequest<CurrentDeviceReference | undefined>,
+  );
+  await Promise.all([
+    requestResult(transaction.objectStore(DEVICE_STORE_NAME).delete(deviceId)),
+    reference?.deviceId === deviceId
+      ? requestResult(referenceStore.delete(userId))
+      : Promise.resolve(undefined),
+  ]);
+  database.close();
 }
 
 export function clearDeviceKeys(): Promise<void> {
@@ -166,12 +289,12 @@ export async function wrapEnvironmentKey(environmentKey: CryptoKey, publicJwk: s
   return bytesToBase64(wrapped);
 }
 
-export async function unwrapEnvironmentKey(userId: string, wrappedKey: string) {
-  const device = await getDeviceKey(userId);
+export async function unwrapEnvironmentKey(deviceId: string, wrappedKey: string) {
+  const device = await getDeviceKey(deviceId);
   if (!device) throw new Error("This device does not hold the selected user’s private key.");
   const raw = await crypto.subtle.decrypt(
     { name: "RSA-OAEP" },
-    device.privateKey,
+    device.encryptionPrivateKey,
     base64ToBytes(wrappedKey),
   );
   const key = await crypto.subtle.importKey("raw", raw, { name: "AES-KW" }, true, [
@@ -180,6 +303,99 @@ export async function unwrapEnvironmentKey(userId: string, wrappedKey: string) {
   ]);
   new Uint8Array(raw).fill(0);
   return key;
+}
+
+export async function deviceKeyFingerprint(publicEncryptionKeyJwk: string) {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    encoder.encode(publicEncryptionKeyJwk),
+  );
+  return Array.from(new Uint8Array(digest), (value) =>
+    value.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+export function createDeviceRequestProof() {
+  const nonce = crypto.getRandomValues(new Uint8Array(32));
+  const codeBytes = crypto.getRandomValues(new Uint32Array(1));
+  return {
+    approvalNonce: bytesToBase64(nonce),
+    verificationCode: String(codeBytes[0] % 1_000_000).padStart(6, "0"),
+  };
+}
+
+export function currentBrowserDescription() {
+  const userAgent = navigator.userAgent;
+  const browserName =
+    userAgent.includes("Edg/")
+      ? "Microsoft Edge"
+      : userAgent.includes("Chrome/")
+        ? "Google Chrome"
+        : userAgent.includes("Firefox/")
+          ? "Mozilla Firefox"
+          : userAgent.includes("Safari/")
+            ? "Safari"
+            : "Web browser";
+  const platform =
+    (navigator as Navigator & { userAgentData?: { platform?: string } })
+      .userAgentData?.platform ||
+    navigator.platform ||
+    "Unknown platform";
+  return { browserName, platform };
+}
+
+function canonicalDeviceApproval(args: {
+  targetDeviceId: string;
+  approverDeviceId: string;
+  approvalNonce: string;
+  envelopes: Array<{
+    environment: Environment;
+    keyVersion: number;
+    wrappedKey: string;
+  }>;
+}) {
+  const order: Record<Environment, number> = {
+    local: 0,
+    development: 1,
+    uat: 2,
+    production: 3,
+  };
+  const envelopes = [...args.envelopes].sort(
+    (left, right) => order[left.environment] - order[right.environment],
+  );
+  return [
+    "nebula-device-approval-v1",
+    args.targetDeviceId,
+    args.approverDeviceId,
+    args.approvalNonce,
+    ...envelopes.map(
+      (envelope) =>
+        `${envelope.environment}:${envelope.keyVersion}:${envelope.wrappedKey}`,
+    ),
+  ].join("|");
+}
+
+export async function signDeviceApproval(
+  deviceId: string,
+  args: {
+    targetDeviceId: string;
+    approverDeviceId: string;
+    approvalNonce: string;
+    envelopes: Array<{
+      environment: Environment;
+      keyVersion: number;
+      wrappedKey: string;
+    }>;
+  },
+) {
+  const device = await getDeviceKey(deviceId);
+  if (!device) throw new Error("The approving device key is not available.");
+  const signature = await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    device.signingPrivateKey,
+    encoder.encode(canonicalDeviceApproval(args)),
+  );
+  return bytesToBase64(signature);
 }
 
 async function createDataKey() {

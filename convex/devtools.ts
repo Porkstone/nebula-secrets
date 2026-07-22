@@ -21,6 +21,8 @@ export const resetWorkspace = mutation({
       secretValueVersions,
       secretValues,
       secretDefinitions,
+      deviceKeyEnvelopes,
+      devices,
       environmentKeyEnvelopes,
       environmentGrants,
       projects,
@@ -32,6 +34,8 @@ export const resetWorkspace = mutation({
       ctx.db.query("secretValueVersions").take(MAX_RESET_ROWS_PER_TABLE + 1),
       ctx.db.query("secretValues").take(MAX_RESET_ROWS_PER_TABLE + 1),
       ctx.db.query("secretDefinitions").take(MAX_RESET_ROWS_PER_TABLE + 1),
+      ctx.db.query("deviceKeyEnvelopes").take(MAX_RESET_ROWS_PER_TABLE + 1),
+      ctx.db.query("devices").take(MAX_RESET_ROWS_PER_TABLE + 1),
       ctx.db
         .query("environmentKeyEnvelopes")
         .take(MAX_RESET_ROWS_PER_TABLE + 1),
@@ -47,6 +51,8 @@ export const resetWorkspace = mutation({
       secretValueVersions,
       secretValues,
       secretDefinitions,
+      deviceKeyEnvelopes,
+      devices,
       environmentKeyEnvelopes,
       environmentGrants,
       projects,
@@ -76,6 +82,12 @@ export const resetWorkspace = mutation({
       await ctx.db.delete("secretValues", document._id);
     for (const document of secretDefinitions) {
       await ctx.db.delete("secretDefinitions", document._id);
+    }
+    for (const document of deviceKeyEnvelopes) {
+      await ctx.db.delete("deviceKeyEnvelopes", document._id);
+    }
+    for (const document of devices) {
+      await ctx.db.delete("devices", document._id);
     }
     for (const document of environmentKeyEnvelopes) {
       await ctx.db.delete("environmentKeyEnvelopes", document._id);

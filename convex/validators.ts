@@ -35,6 +35,18 @@ export const authConfigurationStateValidator = v.union(
   v.literal("enforced"),
 );
 
+export const deviceStatusValidator = v.union(
+  v.literal("pending"),
+  v.literal("active"),
+  v.literal("revoked"),
+);
+
+export const deviceEnvelopeValidator = v.object({
+  environment: environmentValidator,
+  keyVersion: v.number(),
+  wrappedKey: v.string(),
+});
+
 export const secretTypeValidator = v.union(
   v.literal("login"),
   v.literal("apiKey"),
@@ -53,3 +65,4 @@ export type Environment = "local" | "development" | "uat" | "production";
 export type SharedEnvironment = Exclude<Environment, "local">;
 export type UserRole = "developer" | "admin" | "systemAdministrator";
 export type AuthProvider = "workos";
+export type DeviceStatus = "pending" | "active" | "revoked";

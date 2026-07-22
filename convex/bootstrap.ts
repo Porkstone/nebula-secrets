@@ -24,6 +24,11 @@ export const initializeVerifiedWorkos = internalMutation({
     ...verifiedWorkosIdentityValidator.fields,
     displayName: v.string(),
     publicKeyJwk: v.string(),
+    publicSigningKeyJwk: v.optional(v.string()),
+    deviceLabel: v.optional(v.string()),
+    keyFingerprint: v.optional(v.string()),
+    browserName: v.optional(v.string()),
+    platform: v.optional(v.string()),
     keyEnvelopes: v.array(
       v.object({
         environment: environmentValidator,
@@ -87,6 +92,22 @@ export const initializeVerifiedWorkos = internalMutation({
     });
     await getOrCreateGeneralProject(ctx, adminId);
 
+    const deviceId = await ctx.db.insert("devices", {
+      userId: adminId,
+      label: args.deviceLabel?.trim() || "Initial browser",
+      publicEncryptionKeyJwk: args.publicKeyJwk,
+      publicSigningKeyJwk: args.publicSigningKeyJwk,
+      keyFingerprint: args.keyFingerprint,
+      browserName: args.browserName,
+      platform: args.platform,
+      status: "active",
+      requestedAt: now,
+      approvedAt: now,
+      claimedAt: args.publicSigningKeyJwk ? now : undefined,
+      lastUsedAt: now,
+      legacy: args.publicSigningKeyJwk ? undefined : true,
+    });
+
     for (const envelope of args.keyEnvelopes) {
       await ctx.db.insert("environmentKeyEnvelopes", {
         userId: adminId,
@@ -94,6 +115,16 @@ export const initializeVerifiedWorkos = internalMutation({
         keyVersion: 1,
         wrappedKey: envelope.wrappedKey,
         createdBy: adminId,
+        createdAt: now,
+      });
+      await ctx.db.insert("deviceKeyEnvelopes", {
+        userId: adminId,
+        deviceId,
+        environment: envelope.environment,
+        keyVersion: 1,
+        wrappedKey: envelope.wrappedKey,
+        createdByUserId: adminId,
+        createdByDeviceId: deviceId,
         createdAt: now,
       });
       if (envelope.environment !== "local") {

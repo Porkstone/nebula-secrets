@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nebula Secrets — Multi-Browser Device Access</title>
+  <style>
+    :root {
+      --ink: #18231f;
+      --muted: #5f6f68;
+      --faint: #87958f;
+      --paper: #fbfcfb;
+      --surface: #ffffff;
+      --soft: #f0f5f3;
+      --line: #d9e2de;
+      --brand: #176b52;
+      --brand-dark: #0c4f3b;
+      --brand-soft: #dff1ea;
+      --warning: #82571f;
+      --warning-soft: #fbefd9;
+      --danger: #9a3f44;
+      --danger-soft: #fae7e8;
+      --shadow: 0 18px 55px rgba(18, 42, 33, .09);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 8% 0%, #deeee8 0, transparent 28rem),
+        linear-gradient(180deg, #f8faf9, var(--paper));
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.6;
+    }
+
+    a { color: var(--brand); }
+    code {
+      padding: .12rem .34rem;
+      border-radius: .35rem;
+      background: var(--soft);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: .88em;
+    }
+
+    .page { width: min(1120px, calc(100% - 2rem)); margin: 0 auto; padding: 2rem 0 5rem; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 3rem; }
+    .brand { display: flex; align-items: center; gap: .72rem; font-weight: 760; letter-spacing: -.02em; }
+    .brand-mark { width: 2.35rem; height: 2.35rem; display: grid; place-items: center; border-radius: .72rem; color: white; background: var(--brand); box-shadow: 0 8px 22px rgba(23, 107, 82, .24); }
+    .brand-mark svg { width: 1.22rem; }
+    .doc-label { padding: .35rem .62rem; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: rgba(255,255,255,.65); font-size: .72rem; font-weight: 700; }
+
+    .hero { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(280px, .65fr); gap: 2rem; align-items: end; margin-bottom: 2.8rem; }
+    .eyebrow { display: inline-flex; align-items: center; gap: .4rem; color: var(--brand); font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; }
+    h1 { max-width: 17ch; margin: .8rem 0 1rem; font-size: clamp(2.45rem, 6vw, 4.8rem); line-height: .98; letter-spacing: -.055em; }
+    .lead { max-width: 68ch; margin: 0; color: var(--muted); font-size: 1.05rem; }
+    .recommendation { padding: 1.25rem; border: 1px solid #c6ded5; border-radius: 1rem; background: rgba(233, 246, 241, .86); box-shadow: var(--shadow); }
+    .recommendation strong { display: block; margin-bottom: .35rem; color: var(--brand-dark); }
+    .recommendation p { margin: 0; color: var(--muted); font-size: .84rem; }
+
+    .toc { margin-bottom: 2.5rem; padding: .85rem; display: flex; flex-wrap: wrap; gap: .45rem; border: 1px solid var(--line); border-radius: .9rem; background: rgba(255,255,255,.72); }
+    .toc a { padding: .45rem .65rem; border-radius: .5rem; color: var(--muted); font-size: .76rem; font-weight: 700; text-decoration: none; }
+    .toc a:hover { color: var(--brand-dark); background: var(--brand-soft); }
+
+    section { margin-top: 3.4rem; scroll-margin-top: 1.2rem; }
+    .section-heading { display: grid; grid-template-columns: 2.2rem minmax(0, 1fr); gap: .8rem; align-items: start; margin-bottom: 1.25rem; }
+    .section-number { width: 2.2rem; height: 2.2rem; display: grid; place-items: center; border-radius: .65rem; color: var(--brand-dark); background: var(--brand-soft); font-size: .75rem; font-weight: 850; }
+    h2 { margin: 0 0 .25rem; font-size: 1.55rem; line-height: 1.2; letter-spacing: -.025em; }
+    h3 { margin: 0 0 .35rem; font-size: .97rem; }
+    .section-heading p, .muted { margin: 0; color: var(--muted); }
+
+    .card { padding: 1.2rem; border: 1px solid var(--line); border-radius: .9rem; background: var(--surface); box-shadow: 0 8px 30px rgba(18, 42, 33, .045); }
+    .card p { margin: .3rem 0 0; color: var(--muted); font-size: .85rem; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .9rem; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .9rem; }
+    .callout { padding: 1rem 1.1rem; border-left: 4px solid var(--brand); border-radius: .25rem .75rem .75rem .25rem; background: var(--soft); color: var(--muted); }
+    .callout strong { color: var(--ink); }
+    .callout.warning { border-color: #c18b41; background: var(--warning-soft); }
+    .callout.danger { border-color: var(--danger); background: var(--danger-soft); }
+
+    .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.8rem; margin-top: 1rem; }
+    .flow-step { position: relative; min-height: 180px; padding: 1rem; border: 1px solid var(--line); border-radius: .9rem; background: white; }
+    .flow-step:not(:last-child)::after { content: "→"; position: absolute; right: -1.45rem; top: 50%; color: var(--brand); font-size: 1.4rem; font-weight: 800; transform: translateY(-50%); }
+    .flow-step .step { display: inline-grid; place-items: center; width: 1.7rem; height: 1.7rem; margin-bottom: .75rem; border-radius: 50%; color: white; background: var(--brand); font-size: .7rem; font-weight: 850; }
+    .flow-step p { margin: 0; color: var(--muted); font-size: .8rem; }
+
+    .schema { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1fr); gap: 1rem; }
+    .entity { overflow: hidden; border: 1px solid var(--line); border-radius: .85rem; background: white; }
+    .entity header { padding: .7rem .85rem; color: white; background: var(--brand-dark); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .78rem; font-weight: 750; }
+    .entity ul { list-style: none; margin: 0; padding: .5rem 0; }
+    .entity li { display: flex; justify-content: space-between; gap: 1rem; padding: .38rem .85rem; border-bottom: 1px solid #edf1ef; font-size: .75rem; }
+    .entity li:last-child { border-bottom: 0; }
+    .entity li span:last-child { color: var(--faint); text-align: right; }
+
+    .tree { padding: 1rem 1.1rem; border: 1px solid var(--line); border-radius: .85rem; background: #15241e; color: #e7f1ed; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .78rem; line-height: 1.8; white-space: pre; overflow-x: auto; }
+
+    table { width: 100%; border-collapse: collapse; overflow: hidden; border: 1px solid var(--line); border-radius: .85rem; background: white; }
+    th, td { padding: .72rem .8rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; font-size: .76rem; }
+    th { color: var(--muted); background: var(--soft); font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; }
+    tr:last-child td { border-bottom: 0; }
+    td:first-child { font-weight: 720; }
+
+    .timeline { position: relative; display: grid; gap: .75rem; margin-left: .7rem; padding-left: 1.6rem; border-left: 2px solid #c9dad3; }
+    .timeline-item { position: relative; padding: 1rem; border: 1px solid var(--line); border-radius: .8rem; background: white; }
+    .timeline-item::before { content: ""; position: absolute; left: -2.05rem; top: 1.25rem; width: .78rem; height: .78rem; border: 3px solid var(--paper); border-radius: 50%; background: var(--brand); }
+    .timeline-item small { display: block; margin-bottom: .25rem; color: var(--brand); font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+    .timeline-item p { margin: 0; color: var(--muted); font-size: .82rem; }
+
+    .decision { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .8rem; padding: 1rem; border: 1px solid var(--line); border-radius: .8rem; background: white; }
+    .decision input { width: 1.05rem; height: 1.05rem; margin-top: .18rem; accent-color: var(--brand); }
+    .decision p { margin: .2rem 0 0; color: var(--muted); font-size: .8rem; }
+    .decision-list { display: grid; gap: .65rem; }
+
+    footer { margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid var(--line); display: flex; justify-content: space-between; gap: 1rem; color: var(--faint); font-size: .7rem; }
+
+    @media (max-width: 850px) {
+      .hero, .schema { grid-template-columns: 1fr; }
+      .flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .flow-step:nth-child(2)::after { display: none; }
+      .grid-3 { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 620px) {
+      .page { width: min(100% - 1.2rem, 1120px); padding-top: 1rem; }
+      .topbar { margin-bottom: 2rem; }
+      .doc-label { display: none; }
+      .hero { gap: 1.2rem; }
+      h1 { font-size: 2.65rem; }
+      .grid-2, .flow { grid-template-columns: 1fr; }
+      .flow-step:not(:last-child)::after { content: "↓"; right: auto; left: 50%; top: auto; bottom: -1.55rem; transform: translateX(-50%); }
+      .flow-step:nth-child(2)::after { display: block; }
+      table { display: block; overflow-x: auto; }
+      footer { flex-direction: column; }
+    }
+    @media print {
+      body { background: white; }
+      .page { width: 100%; padding: 0; }
+      .toc { display: none; }
+      .card, .recommendation, .flow-step, .timeline-item { box-shadow: none; break-inside: avoid; }
+      section { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+        </span>
+        <span>Nebula Secrets</span>
+      </div>
+      <span class="doc-label">Design proposal · Review only</span>
+    </header>
+
+    <div class="hero">
+      <div>
+        <span class="eyebrow">Secure device enrollment</span>
+        <h1>Multi-browser access without sharing private keys.</h1>
+        <p class="lead">A design for letting one authenticated user access Nebula Secrets from multiple browsers while preserving client-side encryption and keeping plaintext keys away from Convex.</p>
+      </div>
+      <aside class="recommendation">
+        <strong>Recommended direction</strong>
+        <p>Give every browser its own non-exportable key pair. An existing approved browser transfers access by locally re-wrapping environment keys for the new browser.</p>
+      </aside>
+    </div>
+
+    <nav class="toc" aria-label="Document sections">
+      <a href="#problem">The problem</a>
+      <a href="#flow">Enrollment flow</a>
+      <a href="#model">Data model</a>
+      <a href="#management">Device management</a>
+      <a href="#recovery">Recovery</a>
+      <a href="#revocation">Revocation</a>
+      <a href="#migration">Migration</a>
+      <a href="#decisions">Review decisions</a>
+    </nav>
+
+    <section id="problem">
+      <div class="section-heading"><span class="section-number">01</span><div><h2>The problem to solve</h2><p>Authentication and encryption answer different questions.</p></div></div>
+      <div class="grid-2">
+        <article class="card"><h3>WorkOS proves identity</h3><p>A user can already authenticate in another browser. That proves who they are, but it does not give the browser access to encryption keys.</p></article>
+        <article class="card"><h3>The browser holds the decryption capability</h3><p>Nebula currently stores a single public key per user. The matching non-exportable private key stays in one browser's IndexedDB and cannot safely be copied.</p></article>
+      </div>
+      <div class="callout" style="margin-top:1rem"><strong>Design principle:</strong> signing in on a new browser must not automatically reveal secrets. Authentication establishes identity; device enrollment grants cryptographic access.</div>
+    </section>
+
+    <section id="flow">
+      <div class="section-heading"><span class="section-number">02</span><div><h2>Recommended enrollment flow</h2><p>The existing browser acts as the trusted bridge to the new browser.</p></div></div>
+      <div class="flow">
+        <article class="flow-step"><span class="step">1</span><h3>Sign in and request</h3><p>The user signs in through WorkOS. The new browser creates its own non-exportable key pair and registers a pending device with its public key.</p></article>
+        <article class="flow-step"><span class="step">2</span><h3>Review on trusted device</h3><p>An existing active browser displays the request, device details, expiry time, and a short verification code.</p></article>
+        <article class="flow-step"><span class="step">3</span><h3>Re-wrap locally</h3><p>After approval, the trusted browser decrypts each environment key locally and wraps it to the new browser's public key.</p></article>
+        <article class="flow-step"><span class="step">4</span><h3>Activate</h3><p>Convex stores the new encrypted envelopes and marks the device active. The new browser can now decrypt the same authorised environments.</p></article>
+      </div>
+      <div class="callout warning" style="margin-top:1rem"><strong>No private-key export:</strong> the original browser's private key remains non-exportable. Only environment keys are transferred, and only after being re-encrypted for the new device.</div>
+    </section>
+
+    <section id="model">
+      <div class="section-heading"><span class="section-number">03</span><div><h2>Proposed data model</h2><p>Move from one key per user to one key pair and envelope set per device.</p></div></div>
+      <div class="schema">
+        <article class="entity">
+          <header>devices</header>
+          <ul>
+            <li><span>userId</span><span>owner</span></li>
+            <li><span>label</span><span>user-friendly name</span></li>
+            <li><span>encryptionPublicKeyJwk</span><span>key wrapping</span></li>
+            <li><span>signingPublicKeyJwk</span><span>approval proof</span></li>
+            <li><span>status</span><span>pending · active · revoked</span></li>
+            <li><span>createdAt / approvedAt</span><span>lifecycle</span></li>
+            <li><span>lastUsedAt / revokedAt</span><span>security history</span></li>
+          </ul>
+        </article>
+        <article class="entity">
+          <header>deviceKeyEnvelopes</header>
+          <ul>
+            <li><span>deviceId</span><span>recipient device</span></li>
+            <li><span>userId</span><span>bounded ownership query</span></li>
+            <li><span>environment</span><span>Local · Dev · UAT · Prod</span></li>
+            <li><span>keyVersion</span><span>rotation support</span></li>
+            <li><span>wrappedKey</span><span>ciphertext only</span></li>
+            <li><span>createdByDeviceId</span><span>approval provenance</span></li>
+            <li><span>createdAt</span><span>audit timestamp</span></li>
+          </ul>
+        </article>
+      </div>
+      <div class="tree" style="margin-top:1rem">User
+├── Chrome on desktop      [active]
+│   ├── Local envelope
+│   ├── Development envelope
+│   └── Production envelope
+└── Edge on laptop         [active]
+    ├── Local envelope
+    ├── Development envelope
+    └── Production envelope</div>
+      <p class="muted" style="margin-top:.8rem">The current <code>users.publicKeyJwk</code> and user-scoped envelope relationship would remain temporarily during migration, then be deprecated.</p>
+    </section>
+
+    <section id="management">
+      <div class="section-heading"><span class="section-number">04</span><div><h2>Device management experience</h2><p>Users manage their own trusted browsers; administrators manage policy rather than plaintext access.</p></div></div>
+      <div class="grid-3">
+        <article class="card"><h3>Pending requests</h3><p>Review device name, approximate browser details, request time, expiry, and verification code. Approve only from an active device.</p></article>
+        <article class="card"><h3>Active devices</h3><p>Rename devices and view approval source, creation time, and last use. Clearly identify the current browser.</p></article>
+        <article class="card"><h3>Revoked devices</h3><p>Retain minimal audit metadata while removing access to key envelopes and preventing future device-authorised operations.</p></article>
+      </div>
+      <table style="margin-top:1rem">
+        <thead><tr><th>Actor</th><th>Permitted operations</th><th>Restrictions</th></tr></thead>
+        <tbody>
+          <tr><td>User</td><td>Request, approve, name, and revoke their own devices.</td><td>Approval requires an active device or recovery mechanism.</td></tr>
+          <tr><td>Admin</td><td>Re-grant shared environments if the Admin holds those environment keys.</td><td>Cannot recover another user's private Local environment.</td></tr>
+          <tr><td>System Administrator</td><td>Set device policy, inspect status, and revoke compromised access.</td><td>Role does not provide plaintext keys or automatic Local access.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="recovery">
+      <div class="section-heading"><span class="section-number">05</span><div><h2>When the only browser is lost</h2><p>Recovery is an explicit product and security decision.</p></div></div>
+      <div class="grid-2">
+        <article class="card"><h3>Phase 1: no Local recovery</h3><p>An Admin can re-grant shared environment keys to a replacement device. Local secrets remain inaccessible because only the lost browser held the necessary private capability.</p></article>
+        <article class="card"><h3>Optional phase: recovery phrase</h3><p>At enrollment, generate a high-entropy recovery phrase that encrypts a backup of the user's environment keys. The server stores only encrypted recovery material.</p></article>
+      </div>
+      <div class="callout danger" style="margin-top:1rem"><strong>Recovery changes the threat model:</strong> a recovery phrase makes access more resilient but creates another credential that can unlock secrets. It should be optional, rate-limited, audited, and protected by WorkOS re-authentication.</div>
+    </section>
+
+    <section id="revocation">
+      <div class="section-heading"><span class="section-number">06</span><div><h2>Revocation and key rotation</h2><p>Revoking server access is useful, but it cannot erase data already seen by a browser.</p></div></div>
+      <table>
+        <thead><tr><th>Control</th><th>Effect</th><th>Limitation</th></tr></thead>
+        <tbody>
+          <tr><td>Revoke device</td><td>Reject future device operations and remove its stored key envelopes.</td><td>Cannot erase plaintext or keys previously cached by that browser.</td></tr>
+          <tr><td>End WorkOS sessions</td><td>Stops authenticated API access for compromised sessions.</td><td>Does not invalidate material already decrypted offline.</td></tr>
+          <tr><td>Rotate environment key</td><td>Creates a new key version and new envelopes for remaining devices.</td><td>Existing secret payloads require re-encryption for complete cryptographic revocation.</td></tr>
+        </tbody>
+      </table>
+      <p class="muted" style="margin-top:.8rem">Recommended initial scope: revoke device access immediately and use key rotation as a later, higher-assurance feature.</p>
+    </section>
+
+    <section id="migration">
+      <div class="section-heading"><span class="section-number">07</span><div><h2>Safe migration of existing users</h2><p>Use a widen–migrate–narrow rollout so current browsers keep working throughout.</p></div></div>
+      <div class="timeline">
+        <article class="timeline-item"><small>Deploy 1 · Widen</small><h3>Add the device model</h3><p>Add device tables and optional references. New code reads both legacy user envelopes and device envelopes, while new enrollments use the device model.</p></article>
+        <article class="timeline-item"><small>Backfill</small><h3>Create each legacy device</h3><p>Create one active device from every existing <code>publicKeyJwk</code> and copy the user's current environment envelopes to that device without changing ciphertext.</p></article>
+        <article class="timeline-item"><small>Client claim</small><h3>Associate IndexedDB keys</h3><p>On the existing browser's next login, associate its legacy private-key reference with the new device record. The non-exportable key itself remains untouched.</p></article>
+        <article class="timeline-item"><small>Verify</small><h3>Check coverage</h3><p>Confirm every active user with a legacy key has an active device and equivalent environment envelopes. Keep migration progress bounded and resumable.</p></article>
+        <article class="timeline-item"><small>Deploy 2 · Narrow</small><h3>Retire the single-device path</h3><p>Switch reads entirely to device envelopes and deprecate legacy fields. Physical field removal can wait until the new model is proven stable.</p></article>
+      </div>
+    </section>
+
+    <section id="security">
+      <div class="section-heading"><span class="section-number">08</span><div><h2>Security controls</h2><p>Controls that should accompany device enrollment.</p></div></div>
+      <div class="grid-2">
+        <article class="card"><h3>Approval integrity</h3><p>Use a short-lived request, single-use nonce, and optional device signing key. The existing device signs the approval and the server verifies the registered public key.</p></article>
+        <article class="card"><h3>Step-up authentication</h3><p>Require recent WorkOS authentication or MFA before approving, recovering, or revoking a device.</p></article>
+        <article class="card"><h3>Notifications and audit</h3><p>Record request, approval, rejection, envelope creation, and revocation events without logging key material. Notify the user of device changes.</p></article>
+        <article class="card"><h3>Abuse controls</h3><p>Limit pending requests per user, expire them quickly, rate-limit retries, and never reveal whether another email address has a Nebula account.</p></article>
+      </div>
+    </section>
+
+    <section id="decisions">
+      <div class="section-heading"><span class="section-number">09</span><div><h2>Decisions for review</h2><p>Items to agree before implementation begins.</p></div></div>
+      <div class="decision-list">
+        <label class="decision"><input type="checkbox"><span><strong>Approve existing-device enrollment as the primary flow</strong><p>A trusted browser re-wraps environment keys for the new browser.</p></span></label>
+        <label class="decision"><input type="checkbox"><span><strong>Choose the initial recovery policy</strong><p>Either accept that lost Local secrets are unrecoverable, or include recovery phrases in the first release.</p></span></label>
+        <label class="decision"><input type="checkbox"><span><strong>Require WorkOS step-up authentication</strong><p>Decide whether recent authentication is required for approvals only or for both approvals and revocations.</p></span></label>
+        <label class="decision"><input type="checkbox"><span><strong>Confirm Administrator boundaries</strong><p>Admins can restore shared access but cannot decrypt or recover user-private Local keys.</p></span></label>
+        <label class="decision"><input type="checkbox"><span><strong>Defer full key rotation</strong><p>Initial revocation removes future server access; complete cryptographic re-encryption becomes a later feature.</p></span></label>
+      </div>
+    </section>
+
+    <section id="recommendation">
+      <div class="section-heading"><span class="section-number">10</span><div><h2>Recommended delivery boundary</h2><p>A focused first release that adds meaningful multi-browser access without weakening encryption.</p></div></div>
+      <div class="callout"><strong>First release:</strong> per-browser device records, pending enrollment, approval from an existing device, locally re-wrapped Local and shared environment keys, device management, revocation, audit events, and the legacy-device migration.</div>
+      <div class="callout warning" style="margin-top:.7rem"><strong>Later release:</strong> recovery phrases, full environment-key rotation, automated secret re-encryption, organisation-wide device policy, and advanced risk signals.</div>
+    </section>
+
+    <footer>
+      <span>Nebula Secrets · Multi-browser device access proposal</span>
+      <span>Review document — no implementation changes</span>
+    </footer>
+  </main>
+</body>
+</html>

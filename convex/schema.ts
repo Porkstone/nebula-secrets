@@ -87,6 +87,54 @@ export default defineSchema({
     ])
     .index("by_environment_and_keyVersion", ["environment", "keyVersion"]),
 
+  devices: defineTable({
+    userId: v.id("users"),
+    label: v.string(),
+    publicEncryptionKeyJwk: v.string(),
+    publicSigningKeyJwk: v.optional(v.string()),
+    keyFingerprint: v.optional(v.string()),
+    browserName: v.optional(v.string()),
+    platform: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("active"),
+      v.literal("revoked"),
+    ),
+    verificationCode: v.optional(v.string()),
+    approvalNonce: v.optional(v.string()),
+    requestedAt: v.number(),
+    expiresAt: v.optional(v.number()),
+    approvedAt: v.optional(v.number()),
+    approvedByDeviceId: v.optional(v.id("devices")),
+    claimedAt: v.optional(v.number()),
+    lastUsedAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+    revokedByUserId: v.optional(v.id("users")),
+    legacy: v.optional(v.boolean()),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userId_and_status", ["userId", "status"])
+    .index("by_status_and_expiresAt", ["status", "expiresAt"]),
+
+  deviceKeyEnvelopes: defineTable({
+    userId: v.id("users"),
+    deviceId: v.id("devices"),
+    environment,
+    keyVersion: v.number(),
+    wrappedKey: v.string(),
+    createdByUserId: v.id("users"),
+    createdByDeviceId: v.optional(v.id("devices")),
+    createdAt: v.number(),
+  })
+    .index("by_deviceId", ["deviceId"])
+    .index("by_deviceId_and_environment_and_keyVersion", [
+      "deviceId",
+      "environment",
+      "keyVersion",
+    ])
+    .index("by_userId_and_environment", ["userId", "environment"])
+    .index("by_environment_and_keyVersion", ["environment", "keyVersion"]),
+
   projects: defineTable({
     name: v.string(),
     normalizedName: v.string(),

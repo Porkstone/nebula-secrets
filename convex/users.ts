@@ -253,6 +253,31 @@ export const enrollDevice = mutation({
         createdAt: Date.now(),
       });
     }
+    const existingDevices = await ctx.db
+      .query("devices")
+      .withIndex("by_userId", (q) => q.eq("userId", actor._id))
+      .take(1);
+    if (existingDevices.length === 0) {
+      const now = Date.now();
+      const deviceId = await ctx.db.insert("devices", {
+        userId: actor._id,
+        label: "Legacy browser",
+        publicEncryptionKeyJwk: args.publicKeyJwk,
+        status: "active",
+        requestedAt: now,
+        approvedAt: now,
+        legacy: true,
+      });
+      await ctx.db.insert("deviceKeyEnvelopes", {
+        userId: actor._id,
+        deviceId,
+        environment: "local",
+        keyVersion: 1,
+        wrappedKey: args.localKeyEnvelope,
+        createdByUserId: actor._id,
+        createdAt: now,
+      });
+    }
     await ctx.db.patch("users", actor._id, {
       publicKeyJwk: args.publicKeyJwk,
       updatedAt: Date.now(),
@@ -274,7 +299,8 @@ export const listForAdmin = query({
     const users = await ctx.db.query("users").order("asc").take(100);
     return await Promise.all(
       users.map(async (user) => {
-        const grants = await Promise.all(
+        const [grants, activeDevices] = await Promise.all([
+          Promise.all(
           (["development", "uat", "production"] as const).map(
             async (environment) => {
               const grant = await ctx.db
@@ -286,10 +312,18 @@ export const listForAdmin = query({
               return [environment, grant?.status === "active"] as const;
             },
           ),
-        );
+          ),
+          ctx.db
+            .query("devices")
+            .withIndex("by_userId_and_status", (q) =>
+              q.eq("userId", user._id).eq("status", "active"),
+            )
+            .take(51),
+        ]);
         return {
           ...publicUser(user),
           grants: Object.fromEntries(grants),
+          activeDeviceCount: Math.min(activeDevices.length, 50),
         };
       }),
     );
@@ -304,6 +338,28 @@ export const getPublicKey = query({
     if (!target || target.status !== "active")
       throw new Error("User is not active.");
     return target.publicKeyJwk ?? null;
+  },
+});
+
+export const getActiveDevicePublicKeys = query({
+  args: { targetUserId: v.id("users") },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const target = await ctx.db.get("users", args.targetUserId);
+    if (!target || target.status !== "active") {
+      throw new Error("User is not active.");
+    }
+    const devices = await ctx.db
+      .query("devices")
+      .withIndex("by_userId_and_status", (q) =>
+        q.eq("userId", target._id).eq("status", "active"),
+      )
+      .take(51);
+    if (devices.length > 50) throw new Error("The target has too many active devices.");
+    return devices.map((device) => ({
+      deviceId: device._id,
+      publicEncryptionKeyJwk: device.publicEncryptionKeyJwk,
+    }));
   },
 });
 
