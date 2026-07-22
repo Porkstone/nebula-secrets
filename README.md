@@ -16,7 +16,7 @@ Nebula Secrets is a development-team vault built with React, Vite, and Convex. I
 
 ## Security model
 
-Every protected Convex function derives the current Nebula user from `ctx.auth.getUserIdentity()` and a server-side identity link. Browser-supplied user IDs are never accepted as proof of identity. WorkOS is the only supported provider today; the provider registry and configuration record are designed to accept additional providers later.
+Every protected Convex function derives the current Nebula user from `ctx.auth.getUserIdentity()` and a server-side identity link. Browser-supplied user IDs are never accepted as proof of identity. Because WorkOS access tokens do not include email by default, the server resolves the authenticated token subject through the WorkOS User Management API and links only the verified profile returned by WorkOS. WorkOS is the only supported provider today; the provider registry and configuration record are designed to accept additional providers later.
 
 Sensitive payloads are encrypted in the browser with AES-256-GCM. Each payload has a random data key wrapped by an environment key using AES-KW. Environment keys are wrapped to browser-generated RSA-OAEP public keys; non-exportable private keys remain in IndexedDB on the enrolled device.
 

@@ -1,5 +1,5 @@
-import { mutation, query, env } from "./_generated/server";
-import { v } from "convex/values";
+import { env, internalMutation, mutation, query } from "./_generated/server";
+import { ConvexError, v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import {
   appendAudit,
@@ -9,7 +9,11 @@ import {
   requireActor,
   requireAdmin,
 } from "./lib/access";
-import { roleValidator } from "./validators";
+import { roleValidator, verifiedWorkosIdentityValidator } from "./validators";
+
+function identityLinkError(code: string, message: string): never {
+  throw new ConvexError({ code, message });
+}
 
 function publicUser(user: Doc<"users">) {
   return {
@@ -33,13 +37,12 @@ export const current = query({
   },
 });
 
-export const linkCurrentIdentity = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated.");
+export const linkVerifiedWorkosIdentity = internalMutation({
+  args: verifiedWorkosIdentityValidator.fields,
+  handler: async (ctx, identity) => {
     if (!isWorkosIssuer(identity.issuer)) {
-      throw new Error(
+      identityLinkError(
+        "UNSUPPORTED_PROVIDER",
         "The configured authentication provider is not supported.",
       );
     }
@@ -52,7 +55,10 @@ export const linkCurrentIdentity = mutation({
       .unique();
     if (alreadyLinked) {
       if (alreadyLinked.status !== "active") {
-        throw new Error("This user account is suspended.");
+        identityLinkError(
+          "ACCOUNT_SUSPENDED",
+          "This user account is suspended.",
+        );
       }
       await ctx.db.patch("users", alreadyLinked._id, {
         lastAuthenticatedAt: Date.now(),
@@ -61,13 +67,9 @@ export const linkCurrentIdentity = mutation({
       return publicUser(alreadyLinked);
     }
 
-    if (!identity.email) {
-      throw new Error(
-        "WorkOS did not provide an email address for this identity.",
-      );
-    }
-    if (identity.emailVerified === false) {
-      throw new Error(
+    if (!identity.emailVerified) {
+      identityLinkError(
+        "EMAIL_NOT_VERIFIED",
         "Verify the WorkOS email address before linking this account.",
       );
     }
@@ -84,7 +86,8 @@ export const linkCurrentIdentity = mutation({
       authConfiguration.allowedEmailDomains.length > 0 &&
       !authConfiguration.allowedEmailDomains.includes(emailDomain)
     ) {
-      throw new Error(
+      identityLinkError(
+        "EMAIL_DOMAIN_NOT_ALLOWED",
         "This email domain is not allowed by the authentication configuration.",
       );
     }
@@ -112,17 +115,19 @@ export const linkCurrentIdentity = mutation({
     }
 
     if (!target) {
-      throw new Error(
+      identityLinkError(
+        "INVITATION_NOT_FOUND",
         "No invited Nebula user matches this WorkOS email address. Contact a System Administrator.",
       );
     }
     if (target.tokenIdentifier) {
-      throw new Error(
+      identityLinkError(
+        "IDENTITY_ALREADY_LINKED",
         "This Nebula user is already linked to another identity.",
       );
     }
     if (target.status !== "active") {
-      throw new Error("This user account is suspended.");
+      identityLinkError("ACCOUNT_SUSPENDED", "This user account is suspended.");
     }
 
     const existingSystemAdministrator = await ctx.db
@@ -137,7 +142,7 @@ export const linkCurrentIdentity = mutation({
       role: becomesSystemAdministrator ? "systemAdministrator" : target.role,
       authProvider: "workos",
       tokenIdentifier: identity.tokenIdentifier,
-      providerUserId: identity.subject,
+      providerUserId: identity.providerUserId,
       identityLinkedAt: now,
       lastAuthenticatedAt: now,
       updatedAt: now,
@@ -153,7 +158,12 @@ export const linkCurrentIdentity = mutation({
     });
 
     const linked = await ctx.db.get("users", target._id);
-    if (!linked) throw new Error("The linked user could not be loaded.");
+    if (!linked) {
+      identityLinkError(
+        "LINKED_USER_NOT_FOUND",
+        "The linked user could not be loaded.",
+      );
+    }
     return publicUser(linked);
   },
 });

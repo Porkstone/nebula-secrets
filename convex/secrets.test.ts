@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import { convexTest, type TestConvex } from "convex-test";
 import { describe, expect, test } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -29,19 +29,33 @@ function authenticated(
   });
 }
 
+function verifiedWorkosIdentity(subject: string, email: string) {
+  return {
+    issuer: workosIssuer,
+    tokenIdentifier: `${workosIssuer}|${subject}`,
+    providerUserId: subject,
+    email,
+    emailVerified: true,
+  };
+}
+
 async function initializedVault() {
   const t = convexTest(schema, modules);
   const admin = authenticated(t, "user_admin", "admin@example.test");
-  const adminId = await admin.mutation(api.bootstrap.initialize, {
-    displayName: "Admin",
-    publicKeyJwk: "admin-public-key",
-    keyEnvelopes: [
-      { environment: "local", wrappedKey: "local-key" },
-      { environment: "development", wrappedKey: "development-key" },
-      { environment: "uat", wrappedKey: "uat-key" },
-      { environment: "production", wrappedKey: "production-key" },
-    ],
-  });
+  const adminId = await admin.mutation(
+    internal.bootstrap.initializeVerifiedWorkos,
+    {
+      ...verifiedWorkosIdentity("user_admin", "admin@example.test"),
+      displayName: "Admin",
+      publicKeyJwk: "admin-public-key",
+      keyEnvelopes: [
+        { environment: "local", wrappedKey: "local-key" },
+        { environment: "development", wrappedKey: "development-key" },
+        { environment: "uat", wrappedKey: "uat-key" },
+        { environment: "production", wrappedKey: "production-key" },
+      ],
+    },
+  );
   return { t, admin, adminId };
 }
 
@@ -59,7 +73,9 @@ async function inviteAndLinkDeveloper(
     "user_developer",
     "developer@example.test",
   );
-  await developer.mutation(api.users.linkCurrentIdentity, {});
+  await developer.mutation(internal.users.linkVerifiedWorkosIdentity, {
+    ...verifiedWorkosIdentity("user_developer", "developer@example.test"),
+  });
   return { developer, developerId };
 }
 
@@ -77,7 +93,8 @@ describe("authenticated secrets access model", () => {
     expect(access).toHaveLength(4);
     expect(access.every((item) => item.granted && item.hasKey)).toBe(true);
     await expect(
-      admin.mutation(api.bootstrap.initialize, {
+      admin.mutation(internal.bootstrap.initializeVerifiedWorkos, {
+        ...verifiedWorkosIdentity("user_admin", "admin@example.test"),
         displayName: "Second Admin",
         publicKeyJwk: "public-key",
         keyEnvelopes: [],
@@ -106,7 +123,9 @@ describe("authenticated secrets access model", () => {
 
     const stranger = authenticated(t, "user_stranger", "stranger@example.test");
     await expect(
-      stranger.mutation(api.users.linkCurrentIdentity, {}),
+      stranger.mutation(internal.users.linkVerifiedWorkosIdentity, {
+        ...verifiedWorkosIdentity("user_stranger", "stranger@example.test"),
+      }),
     ).rejects.toThrow("No invited Nebula user matches");
   });
 

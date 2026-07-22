@@ -21,6 +21,7 @@ import type * as projects from "../projects.js";
 import type * as secrets from "../secrets.js";
 import type * as users from "../users.js";
 import type * as validators from "../validators.js";
+import type * as workos from "../workos.js";
 
 import type {
   ApiFromModules,
@@ -42,6 +43,7 @@ declare const fullApi: ApiFromModules<{
   secrets: typeof secrets;
   users: typeof users;
   validators: typeof validators;
+  workos: typeof workos;
 }>;
 
 /**

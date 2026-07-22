@@ -42,6 +42,7 @@ import {
   Authenticated,
   AuthLoading,
   Unauthenticated,
+  useAction,
   useConvex,
   useMutation,
   useQuery,
@@ -127,6 +128,22 @@ function ErrorNotice({ message }: { message: string }) {
   );
 }
 
+function errorMessage(cause: unknown, fallback: string) {
+  if (typeof cause === "object" && cause !== null && "data" in cause) {
+    const data = (cause as { data?: unknown }).data;
+    if (typeof data === "string") return data;
+    if (
+      typeof data === "object" &&
+      data !== null &&
+      "message" in data &&
+      typeof data.message === "string"
+    ) {
+      return data.message;
+    }
+  }
+  return cause instanceof Error ? cause.message : fallback;
+}
+
 export default function App() {
   const { isLoading, user, signIn, signOut } = useAuth();
 
@@ -195,7 +212,7 @@ function AuthenticatedApplication({
     return (
       <BootstrapWorkspace workosEmail={workosEmail} onSignOut={onSignOut} />
     );
-  return <LinkedWorkspace onSignOut={onSignOut} />;
+  return <LinkedWorkspace workosEmail={workosEmail} onSignOut={onSignOut} />;
 }
 
 function BootstrapWorkspace({
@@ -205,7 +222,7 @@ function BootstrapWorkspace({
   workosEmail: string;
   onSignOut: () => void;
 }) {
-  const initialize = useMutation(api.bootstrap.initialize);
+  const initialize = useAction(api.workos.initializeWorkspace);
   const [displayName, setDisplayName] = useState("System Administrator");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -233,9 +250,7 @@ function BootstrapWorkspace({
       await persistDeviceKey(adminId, device);
       window.location.reload();
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Workspace setup failed.",
-      );
+      setError(errorMessage(cause, "Workspace setup failed."));
       setBusy(false);
     }
   }
@@ -317,10 +332,16 @@ function BootstrapWorkspace({
   );
 }
 
-function LinkedWorkspace({ onSignOut }: { onSignOut: () => void }) {
+function LinkedWorkspace({
+  workosEmail,
+  onSignOut,
+}: {
+  workosEmail: string;
+  onSignOut: () => void;
+}) {
   const current = useQuery(api.users.current);
   const users = useQuery(api.users.listVisible, current ? {} : "skip");
-  const linkIdentity = useMutation(api.users.linkCurrentIdentity);
+  const linkIdentity = useAction(api.workos.linkCurrentIdentity);
   const linkStarted = useRef(false);
   const [linkError, setLinkError] = useState("");
 
@@ -328,11 +349,7 @@ function LinkedWorkspace({ onSignOut }: { onSignOut: () => void }) {
     if (current !== null || linkStarted.current || linkError) return;
     linkStarted.current = true;
     void linkIdentity({}).catch((cause: unknown) =>
-      setLinkError(
-        cause instanceof Error
-          ? cause.message
-          : "Unable to link this identity.",
-      ),
+      setLinkError(errorMessage(cause, "Unable to link this identity.")),
     );
   }, [current, linkError, linkIdentity]);
 
@@ -346,6 +363,7 @@ function LinkedWorkspace({ onSignOut }: { onSignOut: () => void }) {
             <ShieldAlert size={24} />
           </span>
           <h1>Access has not been granted</h1>
+          {workosEmail && <p className="muted">Signed in as {workosEmail}</p>}
           <p>
             {linkError ||
               "Your authenticated email does not match an active Nebula invitation."}

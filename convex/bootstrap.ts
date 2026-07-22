@@ -1,6 +1,9 @@
-import { env, mutation, query } from "./_generated/server";
-import { v } from "convex/values";
-import { environmentValidator } from "./validators";
+import { env, internalMutation, query } from "./_generated/server";
+import { ConvexError, v } from "convex/values";
+import {
+  environmentValidator,
+  verifiedWorkosIdentityValidator,
+} from "./validators";
 import { getOrCreateGeneralProject } from "./lib/projects";
 import { isWorkosIssuer, normalizeEmail } from "./lib/access";
 
@@ -12,8 +15,13 @@ export const state = query({
   },
 });
 
-export const initialize = mutation({
+function bootstrapError(code: string, message: string): never {
+  throw new ConvexError({ code, message });
+}
+
+export const initializeVerifiedWorkos = internalMutation({
   args: {
+    ...verifiedWorkosIdentityValidator.fields,
     displayName: v.string(),
     publicKeyJwk: v.string(),
     keyEnvelopes: v.array(
@@ -24,40 +32,42 @@ export const initialize = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not authenticated.");
-    if (!isWorkosIssuer(identity.issuer)) {
-      throw new Error(
+    if (!isWorkosIssuer(args.issuer)) {
+      bootstrapError(
+        "UNSUPPORTED_PROVIDER",
         "The configured authentication provider is not supported.",
       );
     }
-    if (!identity.email) {
-      throw new Error(
-        "WorkOS did not provide an email address for this identity.",
-      );
-    }
-    if (identity.emailVerified === false) {
-      throw new Error(
+    if (!args.emailVerified) {
+      bootstrapError(
+        "EMAIL_NOT_VERIFIED",
         "Verify the WorkOS email address before initializing the workspace.",
       );
     }
-    const email = normalizeEmail(identity.email);
+    const email = normalizeEmail(args.email);
     const requiredBootstrapEmail = env.NEBULA_BOOTSTRAP_ADMIN_EMAIL
       ? normalizeEmail(env.NEBULA_BOOTSTRAP_ADMIN_EMAIL)
       : null;
     if (requiredBootstrapEmail && email !== requiredBootstrapEmail) {
-      throw new Error(
+      bootstrapError(
+        "BOOTSTRAP_EMAIL_NOT_ALLOWED",
         "This WorkOS account is not authorized to initialize the workspace.",
       );
     }
     if ((await ctx.db.query("users").take(1)).length > 0) {
-      throw new Error("The workspace has already been initialized.");
+      bootstrapError(
+        "WORKSPACE_ALREADY_INITIALIZED",
+        "The workspace has already been initialized.",
+      );
     }
     const required = new Set(["local", "development", "uat", "production"]);
     for (const envelope of args.keyEnvelopes)
       required.delete(envelope.environment);
     if (required.size > 0 || args.keyEnvelopes.length !== 4) {
-      throw new Error("One key envelope is required for every environment.");
+      bootstrapError(
+        "INVALID_KEY_ENVELOPES",
+        "One key envelope is required for every environment.",
+      );
     }
 
     const now = Date.now();
@@ -68,8 +78,8 @@ export const initialize = mutation({
       status: "active",
       publicKeyJwk: args.publicKeyJwk,
       authProvider: "workos",
-      tokenIdentifier: identity.tokenIdentifier,
-      providerUserId: identity.subject,
+      tokenIdentifier: args.tokenIdentifier,
+      providerUserId: args.providerUserId,
       identityLinkedAt: now,
       lastAuthenticatedAt: now,
       createdAt: now,

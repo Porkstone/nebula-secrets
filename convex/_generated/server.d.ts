@@ -26,6 +26,7 @@ import type { DataModel } from "./dataModel.js";
  */
 type Env = {
   readonly NEBULA_BOOTSTRAP_ADMIN_EMAIL: string | undefined;
+  readonly WORKOS_API_KEY: string | undefined;
   readonly WORKOS_CLIENT_ID: string | undefined;
 };
 

@@ -21,6 +21,14 @@ export const roleValidator = v.union(
 
 export const authProviderValidator = v.literal("workos");
 
+export const verifiedWorkosIdentityValidator = v.object({
+  issuer: v.string(),
+  tokenIdentifier: v.string(),
+  providerUserId: v.string(),
+  email: v.string(),
+  emailVerified: v.boolean(),
+});
+
 export const authConfigurationStateValidator = v.union(
   v.literal("staged"),
   v.literal("verified"),
