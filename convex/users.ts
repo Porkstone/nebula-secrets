@@ -301,17 +301,17 @@ export const listForAdmin = query({
       users.map(async (user) => {
         const [grants, activeDevices] = await Promise.all([
           Promise.all(
-          (["development", "uat", "production"] as const).map(
-            async (environment) => {
-              const grant = await ctx.db
-                .query("environmentGrants")
-                .withIndex("by_userId_and_environment", (q) =>
-                  q.eq("userId", user._id).eq("environment", environment),
-                )
-                .unique();
-              return [environment, grant?.status === "active"] as const;
-            },
-          ),
+            (["development", "uat", "production"] as const).map(
+              async (environment) => {
+                const grant = await ctx.db
+                  .query("environmentGrants")
+                  .withIndex("by_userId_and_environment", (q) =>
+                    q.eq("userId", user._id).eq("environment", environment),
+                  )
+                  .unique();
+                return [environment, grant?.status === "active"] as const;
+              },
+            ),
           ),
           ctx.db
             .query("devices")
@@ -355,10 +355,12 @@ export const getActiveDevicePublicKeys = query({
         q.eq("userId", target._id).eq("status", "active"),
       )
       .take(51);
-    if (devices.length > 50) throw new Error("The target has too many active devices.");
+    if (devices.length > 50)
+      throw new Error("The target has too many active devices.");
     return devices.map((device) => ({
       deviceId: device._id,
       publicEncryptionKeyJwk: device.publicEncryptionKeyJwk,
+      isLegacyPrimary: device.publicEncryptionKeyJwk === target.publicKeyJwk,
     }));
   },
 });

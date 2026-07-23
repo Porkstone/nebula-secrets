@@ -15,10 +15,7 @@ import {
   requireActor,
   requireSystemAdministrator,
 } from "./lib/access";
-import {
-  deviceEnvelopeValidator,
-  type Environment,
-} from "./validators";
+import { deviceEnvelopeValidator, type Environment } from "./validators";
 
 const environments = ["local", "development", "uat", "production"] as const;
 const sharedEnvironments = ["development", "uat", "production"] as const;
@@ -120,7 +117,8 @@ async function requiredEnvironmentsForUser(
 ) {
   const required: Environment[] = ["local"];
   for (const environment of sharedEnvironments) {
-    if (await getActiveGrant(ctx, userId, environment)) required.push(environment);
+    if (await getActiveGrant(ctx, userId, environment))
+      required.push(environment);
   }
   return required;
 }
@@ -135,10 +133,13 @@ function canonicalApproval(args: {
     wrappedKey: string;
   }>;
 }) {
-  const order = new Map(environments.map((environment, index) => [environment, index]));
+  const order = new Map(
+    environments.map((environment, index) => [environment, index]),
+  );
   const envelopes = [...args.envelopes].sort(
     (left, right) =>
-      (order.get(left.environment) ?? 99) - (order.get(right.environment) ?? 99),
+      (order.get(left.environment) ?? 99) -
+      (order.get(right.environment) ?? 99),
   );
   return [
     "nebula-device-approval-v1",
@@ -303,15 +304,23 @@ export const claimLegacyDevice = mutation({
       .query("devices")
       .withIndex("by_userId", (q) => q.eq("userId", actor._id))
       .take(MAX_DEVICES_PER_USER);
-    let device = devices.find(
+    const matchingDevice = devices.find(
       (candidate) =>
-        candidate.publicEncryptionKeyJwk === args.publicEncryptionKeyJwk &&
-        candidate.status === "active",
+        candidate.publicEncryptionKeyJwk === args.publicEncryptionKeyJwk,
     );
+    if (matchingDevice?.status === "revoked") {
+      throw new Error(
+        "This legacy browser was revoked and cannot be reclaimed.",
+      );
+    }
+    let device =
+      matchingDevice?.status === "active" ? matchingDevice : undefined;
     const now = Date.now();
     if (!device) {
       if (actor.publicKeyJwk !== args.publicEncryptionKeyJwk) {
-        throw new Error("This browser key does not match the legacy device key.");
+        throw new Error(
+          "This browser key does not match the legacy device key.",
+        );
       }
       const deviceId = await ctx.db.insert("devices", {
         userId: actor._id,
@@ -328,7 +337,7 @@ export const claimLegacyDevice = mutation({
         lastUsedAt: now,
         legacy: true,
       });
-      device = await ctx.db.get("devices", deviceId) ?? undefined;
+      device = (await ctx.db.get("devices", deviceId)) ?? undefined;
     }
     if (!device) throw new Error("Unable to create the legacy device record.");
     if (
@@ -452,13 +461,19 @@ export const getApprovalContext = query({
       args.approverDeviceId,
     );
     if (!approver.publicSigningKeyJwk) {
-      throw new Error("This device must finish its legacy-key upgrade before approving others.");
+      throw new Error(
+        "This device must finish its legacy-key upgrade before approving others.",
+      );
     }
     const target = await ctx.db.get("devices", args.targetDeviceId);
     if (!target || target.userId !== actor._id || target.status !== "pending") {
       throw new Error("The pending device request was not found.");
     }
-    if (!target.expiresAt || target.expiresAt <= args.now || !target.approvalNonce) {
+    if (
+      !target.expiresAt ||
+      target.expiresAt <= args.now ||
+      !target.approvalNonce
+    ) {
       throw new Error("The device request has expired.");
     }
     const required = await requiredEnvironmentsForUser(ctx, actor._id);
@@ -529,7 +544,9 @@ export const approveEnrollment = mutation({
       supplied.size !== required.length ||
       required.some((environment) => !supplied.has(environment))
     ) {
-      throw new Error("One device envelope is required for every authorized environment.");
+      throw new Error(
+        "One device envelope is required for every authorized environment.",
+      );
     }
     const canonical = canonicalApproval({
       targetDeviceId: target._id,
@@ -635,7 +652,8 @@ export const revoke = mutation({
   handler: async (ctx, args) => {
     const actor = await requireActor(ctx);
     const device = await ctx.db.get("devices", args.deviceId);
-    if (!device || device.status === "revoked") throw new Error("Device not found.");
+    if (!device || device.status === "revoked")
+      throw new Error("Device not found.");
     const ownsDevice = device.userId === actor._id;
     if (!ownsDevice && actor.role !== "systemAdministrator") {
       throw new Error("System Administrator role required.");
@@ -657,6 +675,23 @@ export const revoke = mutation({
       .take(10);
     for (const envelope of envelopes) {
       await ctx.db.delete("deviceKeyEnvelopes", envelope._id);
+    }
+    const owner = await ctx.db.get("users", device.userId);
+    if (owner?.publicKeyJwk === device.publicEncryptionKeyJwk) {
+      for (const environment of environments) {
+        const legacyEnvelope = await ctx.db
+          .query("environmentKeyEnvelopes")
+          .withIndex("by_userId_and_environment_and_keyVersion", (q) =>
+            q
+              .eq("userId", device.userId)
+              .eq("environment", environment)
+              .eq("keyVersion", 1),
+          )
+          .unique();
+        if (legacyEnvelope) {
+          await ctx.db.delete("environmentKeyEnvelopes", legacyEnvelope._id);
+        }
+      }
     }
     const now = Date.now();
     await ctx.db.patch("devices", device._id, {
@@ -694,9 +729,13 @@ export const touch = mutation({
 export const startLegacyDeviceBackfill = internalMutation({
   args: {},
   handler: async (ctx) => {
-    await ctx.scheduler.runAfter(0, internal.devices.runLegacyDeviceBackfillPage, {
-      cursor: null,
-    });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.devices.runLegacyDeviceBackfillPage,
+      {
+        cursor: null,
+      },
+    );
     return null;
   },
 });
@@ -727,9 +766,13 @@ export const runLegacyDeviceBackfillPage = internalMutation({
       await copyLegacyEnvelopes(ctx, user._id, deviceId, user._id);
     }
     if (!page.isDone) {
-      await ctx.scheduler.runAfter(0, internal.devices.runLegacyDeviceBackfillPage, {
-        cursor: page.continueCursor,
-      });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.devices.runLegacyDeviceBackfillPage,
+        {
+          cursor: page.continueCursor,
+        },
+      );
     }
     return null;
   },

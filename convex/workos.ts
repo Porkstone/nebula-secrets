@@ -101,10 +101,7 @@ export const linkCurrentIdentity = action({
   args: {},
   handler: async (ctx): Promise<null> => {
     const identity = await resolveVerifiedWorkosIdentity(ctx);
-    await ctx.runMutation(
-      internal.users.linkVerifiedWorkosIdentity,
-      identity,
-    );
+    await ctx.runMutation(internal.users.linkVerifiedWorkosIdentity, identity);
     return null;
   },
 });
@@ -133,8 +130,8 @@ export const initializeWorkspace = action({
     const userId: Id<"users"> = await ctx.runMutation(
       internal.bootstrap.initializeVerifiedWorkos,
       {
-      ...identity,
-      ...args,
+        ...identity,
+        ...args,
       },
     );
     const deviceId: Id<"devices"> | null = await ctx.runQuery(

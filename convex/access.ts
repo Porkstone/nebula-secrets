@@ -7,10 +7,7 @@ import {
   requireAdmin,
   requireEnvironmentAccess,
 } from "./lib/access";
-import {
-  environmentValidator,
-  sharedEnvironmentValidator,
-} from "./validators";
+import { environmentValidator, sharedEnvironmentValidator } from "./validators";
 
 export const listMine = query({
   args: { deviceId: v.optional(v.id("devices")) },
@@ -35,24 +32,20 @@ export const listMine = query({
           const envelope = device
             ? await ctx.db
                 .query("deviceKeyEnvelopes")
-                .withIndex(
-                  "by_deviceId_and_environment_and_keyVersion",
-                  (q) =>
-                    q
-                      .eq("deviceId", device._id)
-                      .eq("environment", environment)
-                      .eq("keyVersion", 1),
+                .withIndex("by_deviceId_and_environment_and_keyVersion", (q) =>
+                  q
+                    .eq("deviceId", device._id)
+                    .eq("environment", environment)
+                    .eq("keyVersion", 1),
                 )
                 .unique()
             : await ctx.db
                 .query("environmentKeyEnvelopes")
-                .withIndex(
-                  "by_userId_and_environment_and_keyVersion",
-                  (q) =>
-                    q
-                      .eq("userId", actor._id)
-                      .eq("environment", environment)
-                      .eq("keyVersion", 1),
+                .withIndex("by_userId_and_environment_and_keyVersion", (q) =>
+                  q
+                    .eq("userId", actor._id)
+                    .eq("environment", environment)
+                    .eq("keyVersion", 1),
                 )
                 .unique();
           return { environment, granted, hasKey: Boolean(envelope) };
@@ -81,13 +74,11 @@ export const getKeyEnvelope = query({
     const envelope = device
       ? await ctx.db
           .query("deviceKeyEnvelopes")
-          .withIndex(
-            "by_deviceId_and_environment_and_keyVersion",
-            (q) =>
-              q
-                .eq("deviceId", device._id)
-                .eq("environment", args.environment)
-                .eq("keyVersion", 1),
+          .withIndex("by_deviceId_and_environment_and_keyVersion", (q) =>
+            q
+              .eq("deviceId", device._id)
+              .eq("environment", args.environment)
+              .eq("keyVersion", 1),
           )
           .unique()
       : await ctx.db
@@ -125,13 +116,16 @@ export const setGrant = mutation({
     const actor = await requireAdmin(ctx);
     await requireEnvironmentAccess(ctx, args.environment);
     const target = await ctx.db.get("users", args.targetUserId);
-    if (!target || target.status !== "active") throw new Error("Target user is not active.");
+    if (!target || target.status !== "active")
+      throw new Error("Target user is not active.");
     if (
       args.enabled &&
       !args.wrappedKey &&
       (!args.deviceEnvelopes || args.deviceEnvelopes.length === 0)
     ) {
-      throw new Error("The target user must enroll a device key before access is granted.");
+      throw new Error(
+        "The target user must enroll a device key before access is granted.",
+      );
     }
     const now = Date.now();
     const existingGrant = await ctx.db
@@ -194,7 +188,8 @@ export const setGrant = mutation({
           q.eq("userId", args.targetUserId).eq("status", "active"),
         )
         .take(51);
-      if (activeDevices.length > 50) throw new Error("The target has too many active devices.");
+      if (activeDevices.length > 50)
+        throw new Error("The target has too many active devices.");
       const supplied = new Map(
         args.deviceEnvelopes.map((item) => [item.deviceId, item]),
       );
@@ -203,7 +198,9 @@ export const setGrant = mutation({
         supplied.size !== activeDevices.length ||
         activeDevices.some((device) => !supplied.has(device._id))
       ) {
-        throw new Error("A key envelope is required for every active target device.");
+        throw new Error(
+          "A key envelope is required for every active target device.",
+        );
       }
       for (const device of activeDevices) {
         const deviceEnvelope = supplied.get(device._id);

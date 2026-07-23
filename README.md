@@ -11,6 +11,7 @@ Nebula Secrets is a development-team vault built with React, Vite, and Convex. I
 - Admin-managed environment access
 - User-private Local values and shared Development, UAT, and Production values
 - Browser-encrypted secrets, notes, and file attachments
+- Per-browser device enrollment with trusted-device approval and revocation
 - Projects, version history, archive support, and privacy-safe audit events
 - Responsive desktop and mobile interface
 
@@ -18,7 +19,7 @@ Nebula Secrets is a development-team vault built with React, Vite, and Convex. I
 
 Every protected Convex function derives the current Nebula user from `ctx.auth.getUserIdentity()` and a server-side identity link. Browser-supplied user IDs are never accepted as proof of identity. Because WorkOS access tokens do not include email by default, the server resolves the authenticated token subject through the WorkOS User Management API and links only the verified profile returned by WorkOS. WorkOS is the only supported provider today; the provider registry and configuration record are designed to accept additional providers later.
 
-Sensitive payloads are encrypted in the browser with AES-256-GCM. Each payload has a random data key wrapped by an environment key using AES-KW. Environment keys are wrapped to browser-generated RSA-OAEP public keys; non-exportable private keys remain in IndexedDB on the enrolled device.
+Sensitive payloads are encrypted in the browser with AES-256-GCM. Each payload has a random data key wrapped by an environment key using AES-KW. Every browser generates its own RSA-OAEP encryption key and ECDSA approval-signing key. The non-exportable private keys remain in IndexedDB, while environment keys are stored as separate encrypted envelopes for each approved device.
 
 Convex stores ciphertext, wrapped keys, public keys, environment grants, provider metadata, and minimal audit metadata. It does not receive plaintext secret values, notes, filenames, file contents, or the WorkOS API key.
 
@@ -53,11 +54,15 @@ The combined Convex/Vite development command serves the app at [http://127.0.0.1
 
 Additional users are invited by email from **Admin > Users & access**. On first sign-in, the exact normalized WorkOS email is linked to the invitation, after which the user enrolls a device key. A System Administrator configures provider metadata and performs staged verification from **Authentication**.
 
-Browser-held private keys are not shared between browsers, profiles, or private windows. If a disposable workspace was initialized elsewhere, only a System Administrator can reset it from the missing-key screen. If the data matters, use the original browser; neither WorkOS nor Convex can recover the private key.
+To use another browser or profile, sign in and request device access. The new browser creates its own keys and displays a six-digit verification code. From **Devices** in an existing approved browser, compare the code and approve the request. The trusted browser decrypts its environment keys locally, re-wraps them to the new browser's public key, and signs the approval; private keys never leave either browser.
+
+Devices can be renamed or revoked from **Devices**. Revocation removes their server-held key envelopes and blocks future device-authorized reads, but cannot erase plaintext or keys that a compromised browser previously cached. If every approved browser is lost, private Local values are intentionally unrecoverable in this release.
 
 ### Existing workspaces
 
-New identity fields are optional so the schema can be deployed before accounts are linked. An existing Admin whose email matches the first WorkOS sign-in is promoted to System Administrator when no System Administrator exists. If the stored email must change, set `NEBULA_BOOTSTRAP_ADMIN_EMAIL` to the approved WorkOS email before linking. Migration inspection helpers are in `convex/migrations.ts`.
+New identity fields are optional so the schema can be deployed before accounts are linked. An existing Admin whose email matches the first WorkOS sign-in is promoted to System Administrator when no System Administrator exists. If the stored email must change, set `NEBULA_BOOTSTRAP_ADMIN_EMAIL` to the approved WorkOS email before linking.
+
+The device migration follows a widen-and-migrate rollout: legacy user keys and envelopes remain available while device-scoped records are introduced. Existing browsers automatically claim the matching backfilled device without exporting their private key. Bounded, resumable backfill and inspection helpers are in `convex/devices.ts`.
 
 ## Authentication administration
 
@@ -74,11 +79,11 @@ npm run build
 npx convex dev --once
 ```
 
-Tests cover authenticated bootstrap, anonymous-call rejection, invitation linking, role enforcement, System Administrator-only configuration, Local-value isolation, and shared-environment grants.
+Tests cover authenticated bootstrap, anonymous-call rejection, invitation linking, role enforcement, System Administrator-only configuration, Local-value isolation, shared-environment grants, signed second-browser approval, device envelopes, and revocation.
 
 ## Important directories
 
-- `convex/` — schema, authenticated access controls, provider settings, secrets, attachments, bootstrap, migrations, and audit functions
+- `convex/` — schema, authenticated access controls, provider settings, devices, secrets, attachments, bootstrap, migrations, and audit functions
 - `src/lib/crypto.ts` — Web Crypto key management and client-side encryption
 - `src/App.tsx` — authenticated application screens and workflows
 - `src/index.css` — responsive application styling

@@ -288,11 +288,7 @@ function BootstrapWorkspace({
         platform,
         keyEnvelopes,
       });
-      await persistDeviceKey(
-        initialized.userId,
-        initialized.deviceId,
-        device,
-      );
+      await persistDeviceKey(initialized.userId, initialized.deviceId, device);
       window.location.reload();
     } catch (cause) {
       setError(errorMessage(cause, "Workspace setup failed."));
@@ -456,7 +452,10 @@ function DeviceGate({
       const current = await getCurrentDeviceKey(user._id);
       if (current) {
         if (!cancelled) {
-          setDeviceState({ status: "ready", deviceId: current.deviceId as Id<"devices"> });
+          setDeviceState({
+            status: "ready",
+            deviceId: current.deviceId as Id<"devices">,
+          });
         }
         return;
       }
@@ -484,7 +483,10 @@ function DeviceGate({
       if (!cancelled) {
         setDeviceState({
           status: "error",
-          message: errorMessage(cause, "Unable to load this browser's device key."),
+          message: errorMessage(
+            cause,
+            "Unable to load this browser's device key.",
+          ),
         });
       }
     });
@@ -510,9 +512,7 @@ function DeviceGate({
       return (
         <EnrollFirstDevice
           user={user}
-          onReady={(deviceId) =>
-            setDeviceState({ status: "ready", deviceId })
-          }
+          onReady={(deviceId) => setDeviceState({ status: "ready", deviceId })}
         />
       );
     }
@@ -802,7 +802,11 @@ function RequestDeviceAccess({
           disabled={busy || !label.trim()}
           onClick={() => void requestAccess()}
         >
-          {busy ? <LoaderCircle className="spin" size={17} /> : <Fingerprint size={17} />}
+          {busy ? (
+            <LoaderCircle className="spin" size={17} />
+          ) : (
+            <Fingerprint size={17} />
+          )}
           {busy ? "Creating request…" : "Request device access"}
         </button>
         <button className="button ghost" onClick={onSignOut}>
@@ -848,7 +852,9 @@ function PendingDeviceAccess({
           <Clock3 size={24} />
         </span>
         <span className="eyebrow">Approval required</span>
-        <h2>{device.isExpired ? "Device request expired" : "Approve this browser"}</h2>
+        <h2>
+          {device.isExpired ? "Device request expired" : "Approve this browser"}
+        </h2>
         <p>
           Open Nebula Secrets in an existing approved browser, choose Devices,
           and compare this verification code before approving.
@@ -858,11 +864,19 @@ function PendingDeviceAccess({
         </strong>
         <div className="device-request-summary">
           <span>{device.label}</span>
-          <span>{device.browserName} · {device.platform}</span>
-          {device.expiresAt && <span>Expires {formatRelativeTime(device.expiresAt)}</span>}
+          <span>
+            {device.browserName} · {device.platform}
+          </span>
+          {device.expiresAt && (
+            <span>Expires {formatRelativeTime(device.expiresAt)}</span>
+          )}
         </div>
         {error && <ErrorNotice message={error} />}
-        <button className="button" disabled={busy} onClick={() => void cancelRequest()}>
+        <button
+          className="button"
+          disabled={busy}
+          onClick={() => void cancelRequest()}
+        >
           {busy ? <LoaderCircle className="spin" size={16} /> : <X size={16} />}
           {device.isExpired ? "Remove and request again" : "Cancel request"}
         </button>
@@ -892,9 +906,14 @@ function RevokedDeviceAccess({
   return (
     <div className="center-screen padded">
       <div className="panel key-missing">
-        <span className="icon-disc warning"><ShieldAlert size={24} /></span>
+        <span className="icon-disc warning">
+          <ShieldAlert size={24} />
+        </span>
         <h2>This device has been revoked</h2>
-        <p>Its server-held key envelopes have been removed. Request access again to register fresh browser keys.</p>
+        <p>
+          Its server-held key envelopes have been removed. Request access again
+          to register fresh browser keys.
+        </p>
         <button className="button primary" onClick={() => void requestAgain()}>
           <Fingerprint size={16} /> Request access again
         </button>
@@ -1025,11 +1044,11 @@ function Dashboard({
                 ? "Secrets vault"
                 : section === "devices"
                   ? "Device access"
-                : section === "admin"
-                  ? "Administration"
-                  : section === "authentication"
-                    ? "Authentication"
-                    : "Audit activity"}
+                  : section === "admin"
+                    ? "Administration"
+                    : section === "authentication"
+                      ? "Authentication"
+                      : "Audit activity"}
             </span>
             {section === "vault" && (
               <small>{environmentLabels[environment]} environment</small>
@@ -1060,7 +1079,10 @@ function Dashboard({
           </div>
         </header>
 
-        <main className="workspace-main">
+        <main
+          className="workspace-main"
+          data-environment={section === "vault" ? environment : undefined}
+        >
           {section === "vault" && (
             <Vault
               user={user}
@@ -1071,7 +1093,7 @@ function Dashboard({
             />
           )}
           {section === "devices" && (
-            <DevicesArea user={user} deviceId={deviceId} />
+            <DevicesArea user={user} users={users} deviceId={deviceId} />
           )}
           {section === "admin" && user.role !== "developer" && (
             <AdminArea user={user} deviceId={deviceId} />
@@ -1283,8 +1305,10 @@ function Vault({
           return (
             <button
               key={item}
+              type="button"
               disabled={!enabled}
               className={environment === item ? "active" : ""}
+              aria-pressed={environment === item}
               onClick={() => enabled && onEnvironmentChange(item)}
             >
               {environmentLabels[item]}
@@ -2547,9 +2571,11 @@ function AuthenticationAdmin() {
 
 function DevicesArea({
   user,
+  users,
   deviceId,
 }: {
   user: AppUser;
+  users: AppUser[];
   deviceId: Id<"devices">;
 }) {
   const convex = useConvex();
@@ -2566,6 +2592,10 @@ function DevicesArea({
   const [busyTarget, setBusyTarget] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const userNames = useMemo(
+    () => Object.fromEntries(users.map((item) => [item._id, item.displayName])),
+    [users],
+  );
 
   async function approve(targetDeviceId: Id<"devices">) {
     setBusyTarget(targetDeviceId);
@@ -2575,7 +2605,7 @@ function DevicesArea({
       const context = await convex.query(api.devices.getApprovalContext, {
         targetDeviceId,
         approverDeviceId: deviceId,
-        now: Date.now(),
+        now,
       });
       const envelopes = await Promise.all(
         context.envelopes.map(async (envelope) => {
@@ -2605,7 +2635,9 @@ function DevicesArea({
         envelopes,
         signature,
       });
-      setMessage("The new browser is approved and can now unlock its environments.");
+      setMessage(
+        "The new browser is approved and can now unlock its environments.",
+      );
     } catch (cause) {
       setError(errorMessage(cause, "Unable to approve the device."));
     } finally {
@@ -2679,7 +2711,11 @@ function DevicesArea({
         </div>
       </div>
       {error && <ErrorNotice message={error} />}
-      {message && <div className="notice success"><Check size={16} /> {message}</div>}
+      {message && (
+        <div className="notice success">
+          <Check size={16} /> {message}
+        </div>
+      )}
 
       {pending.length > 0 && (
         <section className="device-section">
@@ -2694,16 +2730,31 @@ function DevicesArea({
             {pending.map((device) => (
               <article className="panel device-card pending" key={device._id}>
                 <div className="device-card-heading">
-                  <span className="icon-disc warning"><Laptop size={19} /></span>
-                  <div><h3>{device.label}</h3><p>{device.browserName} · {device.platform}</p></div>
+                  <span className="icon-disc warning">
+                    <Laptop size={19} />
+                  </span>
+                  <div>
+                    <h3>{device.label}</h3>
+                    <p>
+                      {device.browserName} · {device.platform}
+                    </p>
+                  </div>
                 </div>
                 <div className="device-code-row">
                   <span>Verification code</span>
                   <strong>{device.verificationCode}</strong>
                 </div>
                 <dl className="device-meta">
-                  <div><dt>Requested</dt><dd>{formatRelativeTime(device.requestedAt)}</dd></div>
-                  <div><dt>Fingerprint</dt><dd>{device.keyFingerprint?.slice(0, 16) ?? "Unavailable"}</dd></div>
+                  <div>
+                    <dt>Requested</dt>
+                    <dd>{formatRelativeTime(device.requestedAt)}</dd>
+                  </div>
+                  <div>
+                    <dt>Fingerprint</dt>
+                    <dd>
+                      {device.keyFingerprint?.slice(0, 16) ?? "Unavailable"}
+                    </dd>
+                  </div>
                 </dl>
                 <div className="device-actions">
                   <button
@@ -2711,14 +2762,20 @@ function DevicesArea({
                     disabled={Boolean(busyTarget)}
                     onClick={() => void approve(device._id)}
                   >
-                    {busyTarget === device._id ? <LoaderCircle className="spin" size={16} /> : <Check size={16} />}
+                    {busyTarget === device._id ? (
+                      <LoaderCircle className="spin" size={16} />
+                    ) : (
+                      <Check size={16} />
+                    )}
                     Approve
                   </button>
                   <button
                     className="button ghost"
                     disabled={Boolean(busyTarget)}
                     onClick={() => void reject(device._id)}
-                  ><X size={16} /> Reject</button>
+                  >
+                    <X size={16} /> Reject
+                  </button>
                 </div>
               </article>
             ))}
@@ -2727,28 +2784,67 @@ function DevicesArea({
       )}
 
       <section className="device-section">
-        <div className="section-title-row"><div><span className="eyebrow">Trusted browsers</span><h2>Active devices</h2></div></div>
+        <div className="section-title-row">
+          <div>
+            <span className="eyebrow">Trusted browsers</span>
+            <h2>Active devices</h2>
+          </div>
+        </div>
         <div className="device-grid">
           {active.map((device) => (
             <article className="panel device-card" key={device._id}>
               <div className="device-card-heading">
-                <span className="icon-disc"><Laptop size={19} /></span>
+                <span className="icon-disc">
+                  <Laptop size={19} />
+                </span>
                 <div>
                   <h3>{device.label}</h3>
-                  <p>{device.browserName ?? "Legacy browser"} · {device.platform ?? "Platform unavailable"}</p>
+                  <p>
+                    {device.browserName ?? "Legacy browser"} ·{" "}
+                    {device.platform ?? "Platform unavailable"}
+                  </p>
                 </div>
-                {device._id === deviceId && <span className="current-device-badge">This browser</span>}
+                {device._id === deviceId && (
+                  <span className="current-device-badge">This browser</span>
+                )}
               </div>
               <dl className="device-meta">
-                <div><dt>Approved</dt><dd>{device.approvedAt ? formatRelativeTime(device.approvedAt) : "Legacy"}</dd></div>
-                <div><dt>Last used</dt><dd>{device.lastUsedAt ? formatRelativeTime(device.lastUsedAt) : "Not recorded"}</dd></div>
-                <div><dt>Fingerprint</dt><dd>{device.keyFingerprint?.slice(0, 16) ?? "Pending claim"}</dd></div>
+                <div>
+                  <dt>Approved</dt>
+                  <dd>
+                    {device.approvedAt
+                      ? formatRelativeTime(device.approvedAt)
+                      : "Legacy"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Last used</dt>
+                  <dd>
+                    {device.lastUsedAt
+                      ? formatRelativeTime(device.lastUsedAt)
+                      : "Not recorded"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Fingerprint</dt>
+                  <dd>
+                    {device.keyFingerprint?.slice(0, 16) ?? "Pending claim"}
+                  </dd>
+                </div>
               </dl>
               <div className="device-actions">
-                <button className="button ghost" disabled={Boolean(busyTarget)} onClick={() => void rename(device)}>
+                <button
+                  className="button ghost"
+                  disabled={Boolean(busyTarget)}
+                  onClick={() => void rename(device)}
+                >
                   <Pencil size={15} /> Rename
                 </button>
-                <button className="button destructive ghost" disabled={Boolean(busyTarget)} onClick={() => void revoke(device._id, device.label)}>
+                <button
+                  className="button destructive ghost"
+                  disabled={Boolean(busyTarget)}
+                  onClick={() => void revoke(device._id, device.label)}
+                >
                   <Trash2 size={15} /> Revoke
                 </button>
               </div>
@@ -2759,12 +2855,24 @@ function DevicesArea({
 
       {revoked.length > 0 && (
         <section className="device-section subdued-device-section">
-          <div className="section-title-row"><div><span className="eyebrow">History</span><h2>Revoked or expired</h2></div></div>
+          <div className="section-title-row">
+            <div>
+              <span className="eyebrow">History</span>
+              <h2>Revoked or expired</h2>
+            </div>
+          </div>
           <div className="device-history-list">
             {revoked.map((device) => (
               <div key={device._id} className="device-history-row">
-                <span><strong>{device.label}</strong><small>{device.browserName} · {device.platform}</small></span>
-                <span className="key-state">{device.isExpired ? "Expired" : "Revoked"}</span>
+                <span>
+                  <strong>{device.label}</strong>
+                  <small>
+                    {device.browserName} · {device.platform}
+                  </small>
+                </span>
+                <span className="key-state">
+                  {device.isExpired ? "Expired" : "Revoked"}
+                </span>
               </div>
             ))}
           </div>
@@ -2773,20 +2881,56 @@ function DevicesArea({
 
       {user.role === "systemAdministrator" && workspaceDevices && (
         <section className="device-section">
-          <div className="section-title-row"><div><span className="eyebrow">System administration</span><h2>Workspace devices</h2></div></div>
+          <div className="section-title-row">
+            <div>
+              <span className="eyebrow">System administration</span>
+              <h2>Workspace devices</h2>
+            </div>
+          </div>
           <div className="admin-table-wrap">
             <table className="admin-table">
-              <thead><tr><th>User</th><th>Device</th><th>Status</th><th>Last used</th><th>Action</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Device</th>
+                  <th>Status</th>
+                  <th>Last used</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
               <tbody>
                 {workspaceDevices.map((device) => (
                   <tr key={device._id}>
-                    <td>{device.userId === user._id ? user.displayName : device.userId}</td>
-                    <td><strong>{device.label}</strong><small className="table-subline">{device.browserName} · {device.platform}</small></td>
-                    <td><span className={device.status === "active" ? "key-state ready" : "key-state"}>{device.status}</span></td>
-                    <td>{device.lastUsedAt ? formatRelativeTime(device.lastUsedAt) : "—"}</td>
+                    <td>{userNames[device.userId] ?? "Unknown user"}</td>
+                    <td>
+                      <strong>{device.label}</strong>
+                      <small className="table-subline">
+                        {device.browserName} · {device.platform}
+                      </small>
+                    </td>
+                    <td>
+                      <span
+                        className={
+                          device.status === "active"
+                            ? "key-state ready"
+                            : "key-state"
+                        }
+                      >
+                        {device.status}
+                      </span>
+                    </td>
+                    <td>
+                      {device.lastUsedAt
+                        ? formatRelativeTime(device.lastUsedAt)
+                        : "—"}
+                    </td>
                     <td>
                       {device.status !== "revoked" && (
-                        <button className="button destructive ghost compact" disabled={Boolean(busyTarget)} onClick={() => void revoke(device._id, device.label)}>
+                        <button
+                          className="button destructive ghost compact"
+                          disabled={Boolean(busyTarget)}
+                          onClick={() => void revoke(device._id, device.label)}
+                        >
                           Revoke
                         </button>
                       )}
@@ -2857,6 +3001,11 @@ function AdminArea({
           targetUserId,
           environment,
           enabled: true,
+          wrappedKey: deviceEnvelopes.find(
+            (envelope) =>
+              envelope.deviceId ===
+              targetDevices.find((device) => device.isLegacyPrimary)?.deviceId,
+          )?.wrappedKey,
           deviceEnvelopes,
         });
       } else {
@@ -2958,7 +3107,9 @@ function AdminArea({
                   <td>
                     <span
                       className={
-                        target.activeDeviceCount > 0 ? "key-state ready" : "key-state"
+                        target.activeDeviceCount > 0
+                          ? "key-state ready"
+                          : "key-state"
                       }
                     >
                       {target.activeDeviceCount > 0 ? (
@@ -3272,11 +3423,13 @@ function formatBytes(bytes: number) {
 }
 
 function formatRelativeTime(timestamp: number) {
-  const seconds = Math.round((Date.now() - timestamp) / 1000);
-  if (seconds < 60) return "Just now";
+  const difference = timestamp - Date.now();
+  const future = difference > 0;
+  const seconds = Math.round(Math.abs(difference) / 1000);
+  if (seconds < 60) return future ? "in less than a minute" : "Just now";
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return future ? `in ${minutes}m` : `${minutes}m ago`;
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return future ? `in ${hours}h` : `${hours}h ago`;
   return new Date(timestamp).toLocaleDateString();
 }

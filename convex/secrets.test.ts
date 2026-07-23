@@ -268,4 +268,98 @@ describe("authenticated secrets access model", () => {
       admin.mutation(api.projects.archive, { projectId }),
     ).resolves.toBeNull();
   });
+
+  test("approves and revokes a second browser with signed device envelopes", async () => {
+    const t = convexTest(schema, modules);
+    const admin = authenticated(t, "device_admin", "devices@example.test");
+    const signingKeys = await crypto.subtle.generateKey(
+      { name: "ECDSA", namedCurve: "P-256" },
+      true,
+      ["sign", "verify"],
+    );
+    const publicSigningKeyJwk = JSON.stringify(
+      await crypto.subtle.exportKey("jwk", signingKeys.publicKey),
+    );
+    await admin.mutation(internal.bootstrap.initializeVerifiedWorkos, {
+      ...verifiedWorkosIdentity("device_admin", "devices@example.test"),
+      displayName: "Device Admin",
+      publicKeyJwk: "initial-encryption-key",
+      publicSigningKeyJwk,
+      deviceLabel: "Trusted browser",
+      keyFingerprint: "initial-fingerprint",
+      browserName: "Test browser",
+      platform: "Test platform",
+      keyEnvelopes: [
+        { environment: "local", wrappedKey: "initial-local-key" },
+        { environment: "development", wrappedKey: "initial-development-key" },
+        { environment: "uat", wrappedKey: "initial-uat-key" },
+        { environment: "production", wrappedKey: "initial-production-key" },
+      ],
+    });
+    const initialDevice = (
+      await admin.query(api.devices.listMine, { now: Date.now() })
+    ).find((device) => device.status === "active");
+    expect(initialDevice).toBeDefined();
+
+    const request = await admin.mutation(api.devices.requestEnrollment, {
+      label: "Second browser",
+      publicEncryptionKeyJwk: "second-encryption-key",
+      publicSigningKeyJwk,
+      keyFingerprint: "second-fingerprint",
+      browserName: "Test browser",
+      platform: "Test platform",
+      verificationCode: "123456",
+      approvalNonce: "approval-nonce",
+    });
+    const context = await admin.query(api.devices.getApprovalContext, {
+      targetDeviceId: request.deviceId,
+      approverDeviceId: initialDevice!._id,
+      now: Date.now(),
+    });
+    const envelopes = context.envelopes.map((envelope) => ({
+      environment: envelope.environment,
+      keyVersion: envelope.keyVersion,
+      wrappedKey: `second-${envelope.environment}-key`,
+    }));
+    const canonical = [
+      "nebula-device-approval-v1",
+      request.deviceId,
+      initialDevice!._id,
+      context.approvalNonce,
+      ...envelopes.map(
+        (envelope) =>
+          `${envelope.environment}:${envelope.keyVersion}:${envelope.wrappedKey}`,
+      ),
+    ].join("|");
+    const signatureBytes = new Uint8Array(
+      await crypto.subtle.sign(
+        { name: "ECDSA", hash: "SHA-256" },
+        signingKeys.privateKey,
+        new TextEncoder().encode(canonical),
+      ),
+    );
+    let signatureBinary = "";
+    for (const byte of signatureBytes)
+      signatureBinary += String.fromCharCode(byte);
+    await admin.mutation(api.devices.approveEnrollment, {
+      targetDeviceId: request.deviceId,
+      approverDeviceId: initialDevice!._id,
+      envelopes,
+      signature: btoa(signatureBinary),
+    });
+
+    expect(
+      await admin.query(api.access.getKeyEnvelope, {
+        environment: "local",
+        deviceId: request.deviceId,
+      }),
+    ).toEqual({ wrappedKey: "second-local-key", keyVersion: 1 });
+    await admin.mutation(api.devices.revoke, { deviceId: request.deviceId });
+    await expect(
+      admin.query(api.access.getKeyEnvelope, {
+        environment: "local",
+        deviceId: request.deviceId,
+      }),
+    ).rejects.toThrow("An active device is required");
+  });
 });
