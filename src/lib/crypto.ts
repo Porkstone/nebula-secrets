@@ -1,5 +1,15 @@
 export type Environment = "local" | "development" | "uat" | "production";
-export type SecretType = "login" | "apiKey" | "introducerApiKey" | "licenseKey";
+export type SecretType =
+  | "login"
+  | "apiKey"
+  | "introducerApiKey"
+  | "licenseKey"
+  | "webConfig";
+
+export type WebConfigEntry = {
+  key: string;
+  value: string;
+};
 
 export type EncryptedPayload = {
   ciphertext: string;
@@ -21,6 +31,7 @@ export type SecretPayload = {
   licenseKey?: string;
   licensee?: string;
   expiresAt?: string;
+  webConfigEntries?: WebConfigEntry[];
 };
 
 export type AttachmentMetadata = {

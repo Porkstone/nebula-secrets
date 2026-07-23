@@ -52,6 +52,7 @@ export const secretTypeValidator = v.union(
   v.literal("apiKey"),
   v.literal("introducerApiKey"),
   v.literal("licenseKey"),
+  v.literal("webConfig"),
 );
 
 export const encryptedPayloadValidator = v.object({
@@ -67,4 +68,9 @@ export type SharedEnvironment = Exclude<Environment, "local">;
 export type UserRole = "developer" | "admin" | "systemAdministrator";
 export type AuthProvider = "workos";
 export type DeviceStatus = "pending" | "active" | "revoked";
-export type SecretType = "login" | "apiKey" | "introducerApiKey" | "licenseKey";
+export type SecretType =
+  | "login"
+  | "apiKey"
+  | "introducerApiKey"
+  | "licenseKey"
+  | "webConfig";

@@ -78,7 +78,9 @@ import {
   type Environment,
   type SecretPayload,
   type SecretType,
+  type WebConfigEntry,
 } from "./lib/crypto";
+import { formatWebConfigEntries } from "./lib/webConfig";
 
 type AppUser = {
   _id: Id<"users">;
@@ -173,12 +175,14 @@ const secretTypes: SecretType[] = [
   "apiKey",
   "introducerApiKey",
   "licenseKey",
+  "webConfig",
 ];
 const secretTypeLabels: Record<SecretType, string> = {
   login: "Login",
   apiKey: "API Key",
   introducerApiKey: "Introducer API Key",
   licenseKey: "License Key",
+  webConfig: "Web.Config",
 };
 
 function allowedSecretTypesForProject(project: Doc<"projects">) {
@@ -1932,7 +1936,11 @@ function ProjectManager({
 
 function SecretIcon({ type }: { type: SecretType }) {
   if (type === "login") return <LogIn size={19} />;
-  if (type === "apiKey" || type === "introducerApiKey")
+  if (
+    type === "apiKey" ||
+    type === "introducerApiKey" ||
+    type === "webConfig"
+  )
     return <Code2 size={19} />;
   return <BadgeCheck size={19} />;
 }
@@ -1969,7 +1977,12 @@ function SecretEditor({
       "",
   );
   const [payload, setPayload] = useState<SecretPayload>(
-    decrypted ?? { notes: "" },
+    decrypted ?? {
+      notes: "",
+      ...(row?.definition.type === "webConfig"
+        ? { webConfigEntries: [{ key: "", value: "" }] }
+        : {}),
+    },
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -1996,6 +2009,39 @@ function SecretEditor({
     setPayload((current) => ({ ...current, [name]: value }));
   }
 
+  function updateWebConfigEntry(
+    index: number,
+    fieldName: keyof WebConfigEntry,
+    value: string,
+  ) {
+    setPayload((current) => ({
+      ...current,
+      webConfigEntries: (current.webConfigEntries ?? []).map(
+        (entry, itemIndex) =>
+          itemIndex === index ? { ...entry, [fieldName]: value } : entry,
+      ),
+    }));
+  }
+
+  function addWebConfigEntry() {
+    setPayload((current) => ({
+      ...current,
+      webConfigEntries: [
+        ...(current.webConfigEntries ?? []),
+        { key: "", value: "" },
+      ],
+    }));
+  }
+
+  function removeWebConfigEntry(index: number) {
+    setPayload((current) => ({
+      ...current,
+      webConfigEntries: (current.webConfigEntries ?? []).filter(
+        (_, itemIndex) => itemIndex !== index,
+      ),
+    }));
+  }
+
   function changeType(nextType: SecretType) {
     setType(nextType);
     setPayload((current) => {
@@ -2012,7 +2058,12 @@ function SecretEditor({
             : {}),
         };
       }
-      return { notes: current.notes };
+      return {
+        notes: current.notes,
+        ...(nextType === "webConfig"
+          ? { webConfigEntries: [{ key: "", value: "" }] }
+          : {}),
+      };
     });
   }
 
@@ -2021,10 +2072,29 @@ function SecretEditor({
     setBusy(true);
     setError("");
     try {
+      let payloadToEncrypt = payload;
+      if (type === "webConfig") {
+        const entries = (payload.webConfigEntries ?? []).map((entry) => ({
+          key: entry.key.trim(),
+          value: entry.value,
+        }));
+        if (entries.length === 0 || entries.some((entry) => !entry.key)) {
+          throw new Error(
+            "Add at least one Web.Config entry and give every entry a key.",
+          );
+        }
+        const normalizedKeys = entries.map((entry) =>
+          entry.key.toLowerCase(),
+        );
+        if (new Set(normalizedKeys).size !== normalizedKeys.length) {
+          throw new Error("Web.Config keys must be unique.");
+        }
+        payloadToEncrypt = { notes: payload.notes, webConfigEntries: entries };
+      }
       const cryptoId = row?.definition.cryptoId ?? crypto.randomUUID();
       const version = (row?.value?.version ?? 0) + 1;
       const encrypted = await encryptPayload(
-        payload,
+        payloadToEncrypt,
         environmentKey,
         secretAad({
           cryptoId,
@@ -2259,6 +2329,67 @@ function SecretEditor({
             </label>
           </div>
         )}
+        {type === "webConfig" && (
+          <section
+            className="web-config-editor"
+            aria-labelledby="web-config-title"
+          >
+            <div className="web-config-heading">
+              <div>
+                <h3 id="web-config-title">Key-value pairs</h3>
+                <p>
+                  Each pair will be copied as an XML-safe appSettings add
+                  element.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="button small"
+                onClick={addWebConfigEntry}
+              >
+                <Plus size={15} /> Add pair
+              </button>
+            </div>
+            <div className="web-config-entries">
+              {(payload.webConfigEntries ?? []).map((entry, index) => (
+                <div className="web-config-entry" key={index}>
+                  <label>
+                    Key
+                    <input
+                      required
+                      value={entry.key}
+                      onChange={(event) =>
+                        updateWebConfigEntry(index, "key", event.target.value)
+                      }
+                      placeholder="e.g. CognitionCustomerPortal.Authenticate.WASOverride"
+                      autoComplete="off"
+                    />
+                  </label>
+                  <label>
+                    Value
+                    <input
+                      value={entry.value}
+                      onChange={(event) =>
+                        updateWebConfigEntry(index, "value", event.target.value)
+                      }
+                      placeholder="e.g. False"
+                      autoComplete="off"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="icon-button danger-button"
+                    disabled={(payload.webConfigEntries?.length ?? 0) <= 1}
+                    aria-label={`Remove Web.Config pair ${index + 1}`}
+                    onClick={() => removeWebConfigEntry(index)}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
         <label>
           Notes
           <textarea
@@ -2319,6 +2450,7 @@ function SecretDetail({
     label: string;
     value: string;
     sensitive?: boolean;
+    includeEmpty?: boolean;
   }>;
   if (row.definition.type === "login") {
     sensitiveFields = [
@@ -2350,7 +2482,7 @@ function SecretDetail({
       { label: "API key", value: payload?.apiKey ?? "", sensitive: true },
       { label: "Endpoint", value: payload?.endpoint ?? "" },
     ];
-  } else {
+  } else if (row.definition.type === "licenseKey") {
     sensitiveFields = [
       {
         label: "License key",
@@ -2360,9 +2492,20 @@ function SecretDetail({
       { label: "Licensee", value: payload?.licensee ?? "" },
       { label: "Expires", value: payload?.expiresAt ?? "" },
     ];
+  } else {
+    sensitiveFields = (payload?.webConfigEntries ?? []).map((entry) => ({
+      label: entry.key,
+      value: entry.value,
+      sensitive: true,
+      includeEmpty: true,
+    }));
   }
+  const webConfig =
+    row.definition.type === "webConfig"
+      ? formatWebConfigEntries(payload?.webConfigEntries ?? [])
+      : "";
 
-  async function copy(label: string, value: string) {
+  async function copy(label: string, value: string, copiedKey = label) {
     await navigator.clipboard.writeText(value);
     if (row.value) {
       await recordSecretAction({
@@ -2371,7 +2514,7 @@ function SecretDetail({
         context: label,
       });
     }
-    setCopied(label);
+    setCopied(copiedKey);
     window.setTimeout(() => setCopied(""), 1800);
   }
 
@@ -2395,7 +2538,26 @@ function SecretDetail({
               <ShieldCheck size={13} /> Integrity verified
             </span>
             <div>
+              {webConfig && (
+                <button
+                  type="button"
+                  className="button primary small"
+                  onClick={() =>
+                    void copy("Web.Config", webConfig, "all-web-config")
+                  }
+                >
+                  {copied === "all-web-config" ? (
+                    <Check size={15} />
+                  ) : (
+                    <Clipboard size={15} />
+                  )}
+                  {copied === "all-web-config"
+                    ? "Config copied"
+                    : "Copy Config"}
+                </button>
+              )}
               <button
+                type="button"
                 className="button ghost small"
                 onClick={() => {
                   if (!revealed)
@@ -2427,14 +2589,14 @@ function SecretDetail({
           </div>
           <div className="secret-fields">
             {sensitiveFields
-              .filter((item) => item.value)
+              .filter((item) => item.value || item.includeEmpty)
               .map((item) => (
                 <div className="secret-field" key={item.label}>
                   <span>{item.label}</span>
                   <strong>
-                    {item.sensitive && !revealed
+                    {item.sensitive && item.value && !revealed
                       ? "••••••••••••••••"
-                      : item.value}
+                      : item.value || "Empty value"}
                   </strong>
                   <button
                     className="icon-button"

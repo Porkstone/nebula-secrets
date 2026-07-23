@@ -9,6 +9,7 @@ const ALL_SECRET_TYPES: SecretType[] = [
   "apiKey",
   "introducerApiKey",
   "licenseKey",
+  "webConfig",
 ];
 
 function cleanAllowedSecretTypes(secretTypes: SecretType[]) {
@@ -23,6 +24,7 @@ function secretTypeLabel(secretType: SecretType) {
   if (secretType === "apiKey") return "API Key";
   if (secretType === "introducerApiKey") return "Introducer API Key";
   if (secretType === "licenseKey") return "License Key";
+  if (secretType === "webConfig") return "Web.Config";
   return "Login";
 }
 

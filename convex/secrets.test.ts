@@ -333,6 +333,44 @@ describe("authenticated secrets access model", () => {
     ).rejects.toThrow("does not allow this secret type");
   });
 
+  test("stores Web.Config secrets and enforces project secret type restrictions", async () => {
+    const { admin } = await initializedVault();
+    const projectId = await admin.mutation(api.projects.create, {
+      name: "Web applications",
+      allowedSecretTypes: ["webConfig"],
+    });
+
+    const saved = await admin.mutation(api.secrets.save, {
+      environment: "local",
+      projectId,
+      cryptoId: "web-config",
+      name: "Customer portal configuration",
+      type: "webConfig",
+      payload: encryptedPayload,
+    });
+    const savedDefinition = (
+      await admin.query(api.secrets.list, { environment: "local" })
+    ).find((row) => row.definition._id === saved.secretId)?.definition;
+
+    expect(savedDefinition?.type).toBe("webConfig");
+    await expect(
+      admin.mutation(api.secrets.save, {
+        environment: "local",
+        projectId,
+        cryptoId: "not-allowed-login",
+        name: "Login",
+        type: "login",
+        payload: encryptedPayload,
+      }),
+    ).rejects.toThrow("does not allow the selected secret type");
+    await expect(
+      admin.mutation(api.projects.setAllowedSecretTypes, {
+        projectId,
+        allowedSecretTypes: ["login"],
+      }),
+    ).rejects.toThrow("Move or archive");
+  });
+
   test("converts an API Key to an Introducer API Key as a one-way transition", async () => {
     const { admin } = await initializedVault();
     const saved = await admin.mutation(api.secrets.save, {
