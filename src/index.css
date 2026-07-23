@@ -853,6 +853,13 @@ textarea:focus {
   overflow: hidden;
 }
 .secret-row {
+  position: relative;
+  width: 100%;
+  min-height: 76px;
+  border-bottom: 1px solid var(--line);
+  background: white;
+}
+.secret-row-target {
   width: 100%;
   min-height: 76px;
   display: grid;
@@ -861,16 +868,28 @@ textarea:focus {
   gap: 0.9rem;
   padding: 0.8rem 1rem;
   border: 0;
-  border-bottom: 1px solid var(--line);
   background: white;
   text-align: left;
   color: var(--ink);
 }
+.secret-row.has-copy-action .secret-row-target {
+  padding-right: 4.35rem;
+}
 .secret-row:last-child {
   border-bottom: 0;
 }
-.secret-row:hover {
+.secret-row-target:hover {
   background: var(--brand-faint);
+}
+.secret-row-copy {
+  position: absolute;
+  top: 50%;
+  right: 0.75rem;
+  z-index: 1;
+  translate: 0 -50%;
+}
+.secret-row.has-copy-action .row-chevron {
+  display: none;
 }
 .secret-icon {
   width: 40px;
@@ -1678,9 +1697,12 @@ textarea:focus {
     min-width: 42px;
   }
   .secret-row {
+    min-height: 72px;
+  }
+  .secret-row-target {
     grid-template-columns: auto minmax(0, 1fr) auto;
   }
-  .secret-row .status-chip {
+  .secret-row-target .status-chip {
     display: none;
   }
   .form-grid.two {

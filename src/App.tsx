@@ -1182,6 +1182,7 @@ function Vault({
   );
   const projects = useQuery(api.projects.list, {});
   const archiveSecret = useMutation(api.secrets.setArchiveStatus);
+  const recordSecretAction = useMutation(api.audit.recordSecretAction);
   const [decryptedState, setDecryptedState] = useState<{
     token: string;
     rows: DecryptedSecretRow[];
@@ -1191,6 +1192,8 @@ function Vault({
   const [showProjects, setShowProjects] = useState(false);
   const [editorRow, setEditorRow] = useState<SecretRow | "new" | null>(null);
   const [detailSecretId, setDetailSecretId] =
+    useState<Id<"secretDefinitions"> | null>(null);
+  const [copiedSecretId, setCopiedSecretId] =
     useState<Id<"secretDefinitions"> | null>(null);
   const [message, setMessage] = useState("");
 
@@ -1295,6 +1298,30 @@ function Vault({
     });
     setDetailSecretId(null);
     setMessage("Secret archived.");
+  }
+
+  async function copyApiKey(row: DecryptedSecretRow) {
+    const apiKey = row.decrypted?.apiKey;
+    if (!row.value || row.definition.type !== "apiKey" || !apiKey) return;
+
+    try {
+      await navigator.clipboard.writeText(apiKey);
+      await recordSecretAction({
+        secretValueId: row.value._id,
+        action: "secret.copied",
+        context: "API key",
+      });
+      setCopiedSecretId(row.definition._id);
+      window.setTimeout(() => {
+        setCopiedSecretId((current) =>
+          current === row.definition._id ? null : current,
+        );
+      }, 1800);
+    } catch (cause) {
+      setMessage(
+        errorMessage(cause, "Unable to copy the API key to the clipboard."),
+      );
+    }
   }
 
   return (
@@ -1423,46 +1450,74 @@ function Vault({
                     </small>
                   </header>
                   <div className="secret-list">
-                    {group.rows.map((row) => (
-                      <button
-                        className="secret-row"
-                        key={row.definition._id}
-                        onClick={() =>
-                          row.value
-                            ? setDetailSecretId(row.definition._id)
-                            : setEditorRow(row)
-                        }
-                      >
-                        <span className={`secret-icon ${row.definition.type}`}>
-                          <SecretIcon type={row.definition.type} />
-                        </span>
-                        <span className="secret-title">
-                          <strong>{row.definition.name}</strong>
-                          <small>
-                            {secretTypeLabels[row.definition.type]} ·{" "}
-                            {row.value
-                              ? `Version ${row.value.version}`
-                              : "No value in this environment"}
-                          </small>
-                        </span>
-                        <span
-                          className={
-                            row.decryptionError
-                              ? "status-chip danger"
-                              : row.value
-                                ? "status-chip"
-                                : "status-chip muted-chip"
-                          }
+                    {group.rows.map((row) => {
+                      const canCopyApiKey =
+                        row.definition.type === "apiKey" &&
+                        Boolean(row.value && row.decrypted?.apiKey);
+
+                      return (
+                        <div
+                          className={`secret-row${canCopyApiKey ? " has-copy-action" : ""}`}
+                          key={row.definition._id}
                         >
-                          {row.decryptionError
-                            ? "Integrity error"
-                            : row.value
-                              ? "Encrypted"
-                              : "Not set"}
-                        </span>
-                        <ChevronRight size={17} className="row-chevron" />
-                      </button>
-                    ))}
+                          <button
+                            type="button"
+                            className="secret-row-target"
+                            onClick={() =>
+                              row.value
+                                ? setDetailSecretId(row.definition._id)
+                                : setEditorRow(row)
+                            }
+                          >
+                            <span
+                              className={`secret-icon ${row.definition.type}`}
+                            >
+                              <SecretIcon type={row.definition.type} />
+                            </span>
+                            <span className="secret-title">
+                              <strong>{row.definition.name}</strong>
+                              <small>
+                                {secretTypeLabels[row.definition.type]} ·{" "}
+                                {row.value
+                                  ? `Version ${row.value.version}`
+                                  : "No value in this environment"}
+                              </small>
+                            </span>
+                            <span
+                              className={
+                                row.decryptionError
+                                  ? "status-chip danger"
+                                  : row.value
+                                    ? "status-chip"
+                                    : "status-chip muted-chip"
+                              }
+                            >
+                              {row.decryptionError
+                                ? "Integrity error"
+                                : row.value
+                                  ? "Encrypted"
+                                  : "Not set"}
+                            </span>
+                            <ChevronRight size={17} className="row-chevron" />
+                          </button>
+                          {canCopyApiKey && (
+                            <button
+                              type="button"
+                              className="icon-button secret-row-copy"
+                              aria-label={`Copy API key for ${row.definition.name}`}
+                              title="Copy API key"
+                              onClick={() => void copyApiKey(row)}
+                            >
+                              {copiedSecretId === row.definition._id ? (
+                                <Check size={16} />
+                              ) : (
+                                <Clipboard size={16} />
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </section>
               ))}
