@@ -1356,6 +1356,27 @@ textarea:focus {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.78rem;
 }
+.web-config-secret-fields .secret-field {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.35rem 0.8rem;
+  padding-block: 0.7rem;
+}
+.web-config-secret-fields .secret-field > span {
+  grid-column: 1 / -1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+.web-config-secret-fields .secret-field strong {
+  grid-column: 1;
+  grid-row: 2;
+  min-width: 0;
+}
+.web-config-secret-fields .secret-field .icon-button {
+  grid-column: 2;
+  grid-row: 2;
+}
 .notes-block {
   padding: 0.9rem;
   border-radius: 11px;

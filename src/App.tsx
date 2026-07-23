@@ -2812,7 +2812,13 @@ function SecretDetail({
               </button>
             </div>
           </div>
-          <div className="secret-fields">
+          <div
+            className={
+              row.definition.type === "webConfig"
+                ? "secret-fields web-config-secret-fields"
+                : "secret-fields"
+            }
+          >
             {sensitiveFields
               .filter((item) => item.value || item.includeEmpty)
               .map((item) => (
