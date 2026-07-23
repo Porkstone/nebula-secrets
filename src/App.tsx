@@ -296,6 +296,217 @@ function errorMessage(cause: unknown, fallback: string) {
   return cause instanceof Error ? cause.message : fallback;
 }
 
+function ProjectSecretTypeEditor({
+  project,
+  projects,
+  disabled = false,
+  onError,
+  onMessage,
+}: {
+  project: Doc<"projects">;
+  projects: Doc<"projects">[];
+  disabled?: boolean;
+  onError?: (message: string) => void;
+  onMessage?: (message: string) => void;
+}) {
+  const setAllowedSecretTypes = useMutation(api.projects.setAllowedSecretTypes);
+  const moveSecrets = useMutation(
+    api.projects.moveSecretsOfTypeAndUpdateProject,
+  );
+  const [busy, setBusy] = useState(false);
+  const [moveError, setMoveError] = useState("");
+  const [targetProjectId, setTargetProjectId] = useState<
+    Id<"projects"> | ""
+  >("");
+  const [pendingRemoval, setPendingRemoval] = useState<{
+    secretType: SecretType;
+    allowedSecretTypes: SecretType[];
+  } | null>(null);
+
+  function eligibleDestinations(secretType: SecretType) {
+    return projects
+      .filter(
+        (candidate) =>
+          candidate._id !== project._id &&
+          allowedSecretTypesForProject(candidate).includes(secretType),
+      )
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  async function changeAllowedSecretTypes(nextTypes: SecretType[]) {
+    if (nextTypes.length === 0) {
+      onError?.("Each project must allow at least one secret type.");
+      return;
+    }
+    const currentTypes = allowedSecretTypesForProject(project);
+    const removedType = currentTypes.find(
+      (secretType) => !nextTypes.includes(secretType),
+    );
+    setBusy(true);
+    onError?.("");
+    try {
+      const result = await setAllowedSecretTypes({
+        projectId: project._id,
+        allowedSecretTypes: nextTypes,
+      });
+      if (result.status === "blocked") {
+        const blockedType =
+          result.blockedTypes.find((secretType) => secretType === removedType) ??
+          result.blockedTypes[0];
+        if (!blockedType) {
+          throw new Error("The secret type could not be removed.");
+        }
+        const destinations = eligibleDestinations(blockedType);
+        setTargetProjectId(destinations[0]?._id ?? "");
+        setMoveError("");
+        setPendingRemoval({
+          secretType: blockedType,
+          allowedSecretTypes: nextTypes,
+        });
+        return;
+      }
+      onMessage?.(`Updated allowed secret types for ${project.name}.`);
+    } catch (cause) {
+      onError?.(
+        errorMessage(cause, "Unable to update the project's secret types."),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function moveAllSecrets(event: React.FormEvent) {
+    event.preventDefault();
+    if (!pendingRemoval || !targetProjectId) return;
+    setBusy(true);
+    setMoveError("");
+    try {
+      const result = await moveSecrets({
+        sourceProjectId: project._id,
+        targetProjectId,
+        secretType: pendingRemoval.secretType,
+        allowedSecretTypes: pendingRemoval.allowedSecretTypes,
+      });
+      const destination = projects.find(
+        (candidate) => candidate._id === targetProjectId,
+      );
+      onMessage?.(
+        `Moved ${result.movedCount} ${secretTypeLabels[pendingRemoval.secretType]} ${result.movedCount === 1 ? "secret" : "secrets"} to ${destination?.name ?? "the destination project"}.`,
+      );
+      setPendingRemoval(null);
+      setTargetProjectId("");
+    } catch (cause) {
+      setMoveError(
+        errorMessage(cause, "Unable to move the project's secrets."),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const destinations = pendingRemoval
+    ? eligibleDestinations(pendingRemoval.secretType)
+    : [];
+
+  return (
+    <>
+      <div className="project-secret-type-editor">
+        <SecretTypeCheckboxes
+          value={allowedSecretTypesForProject(project)}
+          disabled={disabled || busy}
+          onChange={(nextTypes) => void changeAllowedSecretTypes(nextTypes)}
+        />
+        {busy && <LoaderCircle className="spin" size={16} />}
+      </div>
+      {pendingRemoval && (
+        <Modal
+          title={`Move ${secretTypeLabels[pendingRemoval.secretType]} secrets`}
+          subtitle={`The type cannot be removed from ${project.name} while active secrets still use it.`}
+          onClose={() => {
+            if (!busy) {
+              setPendingRemoval(null);
+              setTargetProjectId("");
+              setMoveError("");
+            }
+          }}
+        >
+          <form
+            className="secret-form"
+            onSubmit={(event) => void moveAllSecrets(event)}
+          >
+            <div className="move-secrets-explanation">
+              <CircleAlert size={19} />
+              <p>
+                Remove or archive the existing{" "}
+                {secretTypeLabels[pendingRemoval.secretType]} secrets first, or
+                move all active secrets of this type to another project.
+              </p>
+            </div>
+            {destinations.length > 0 ? (
+              <label>
+                Destination project
+                <select
+                  required
+                  value={targetProjectId}
+                  onChange={(event) =>
+                    setTargetProjectId(
+                      event.target.value as Id<"projects">,
+                    )
+                  }
+                >
+                  {destinations.map((destination) => (
+                    <option key={destination._id} value={destination._id}>
+                      {destination.name}
+                    </option>
+                  ))}
+                </select>
+                <small>
+                  Only projects that allow{" "}
+                  {secretTypeLabels[pendingRemoval.secretType]} are shown.
+                </small>
+              </label>
+            ) : (
+              <div className="notice warning">
+                <CircleAlert size={16} />
+                Create another project that permits{" "}
+                {secretTypeLabels[pendingRemoval.secretType]}, or enable the
+                type on an existing project, before moving these secrets.
+              </div>
+            )}
+            {moveError && <ErrorNotice message={moveError} />}
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="button ghost"
+                disabled={busy}
+                onClick={() => {
+                  setPendingRemoval(null);
+                  setTargetProjectId("");
+                  setMoveError("");
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="button primary"
+                disabled={busy || destinations.length === 0}
+              >
+                {busy ? (
+                  <LoaderCircle className="spin" size={16} />
+                ) : (
+                  <Folder size={16} />
+                )}
+                Move all and remove type
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </>
+  );
+}
+
 export default function App() {
   const { isLoading, user, signIn, signOut } = useAuth();
 
@@ -1746,6 +1957,7 @@ function Vault({
       {showProjects && projects && (
         <ProjectManager
           projects={projects}
+          canManageSecretTypes={user.role !== "developer"}
           onClose={() => setShowProjects(false)}
         />
       )}
@@ -1755,9 +1967,11 @@ function Vault({
 
 function ProjectManager({
   projects,
+  canManageSecretTypes,
   onClose,
 }: {
   projects: Doc<"projects">[];
+  canManageSecretTypes: boolean;
   onClose: () => void;
 }) {
   const createProject = useMutation(api.projects.create);
@@ -1920,6 +2134,17 @@ function ProjectManager({
                     </button>
                   )}
                 </span>
+                {canManageSecretTypes && (
+                  <fieldset className="project-item-secret-types">
+                    <legend>Allowed secret types</legend>
+                    <ProjectSecretTypeEditor
+                      project={project}
+                      projects={projects}
+                      disabled={busy}
+                      onError={setError}
+                    />
+                  </fieldset>
+                )}
               </div>
             ))}
           </div>
@@ -3512,7 +3737,6 @@ function AdminArea({
   const createUser = useMutation(api.users.create);
   const updateUser = useMutation(api.users.update);
   const setGrant = useMutation(api.access.setGrant);
-  const setProjectSecretTypes = useMutation(api.projects.setAllowedSecretTypes);
   const [showCreate, setShowCreate] = useState(false);
   const [busyTarget, setBusyTarget] = useState("");
   const [error, setError] = useState("");
@@ -3569,30 +3793,6 @@ function AdminArea({
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Access update failed.",
-      );
-    } finally {
-      setBusyTarget("");
-    }
-  }
-
-  async function changeProjectSecretTypes(
-    project: Doc<"projects">,
-    allowedSecretTypes: SecretType[],
-  ) {
-    if (allowedSecretTypes.length === 0) {
-      setError("Each project must allow at least one secret type.");
-      return;
-    }
-    setBusyTarget(`project-${project._id}`);
-    setError("");
-    try {
-      await setProjectSecretTypes({
-        projectId: project._id,
-        allowedSecretTypes,
-      });
-    } catch (cause) {
-      setError(
-        errorMessage(cause, "Unable to update the project's secret types."),
       );
     } finally {
       setBusyTarget("");
@@ -3778,19 +3978,12 @@ function AdminArea({
                       </small>
                     </span>
                   </div>
-                  <SecretTypeCheckboxes
-                    value={allowedSecretTypesForProject(project)}
-                    disabled={busyTarget === `project-${project._id}`}
-                    onChange={(allowedSecretTypes) =>
-                      void changeProjectSecretTypes(project, allowedSecretTypes)
-                    }
+                  <ProjectSecretTypeEditor
+                    project={project}
+                    projects={projects}
+                    disabled={Boolean(busyTarget)}
+                    onError={setError}
                   />
-                  {busyTarget === `project-${project._id}` && (
-                    <LoaderCircle
-                      className="spin project-restriction-spinner"
-                      size={16}
-                    />
-                  )}
                 </div>
               ))}
           </div>

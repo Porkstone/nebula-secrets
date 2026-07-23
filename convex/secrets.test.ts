@@ -307,7 +307,10 @@ describe("authenticated secrets access model", () => {
         projectId,
         allowedSecretTypes: ["login"],
       }),
-    ).rejects.toThrow("Move or archive");
+    ).resolves.toEqual({
+      status: "blocked",
+      blockedTypes: ["introducerApiKey"],
+    });
     await expect(
       developer.mutation(api.projects.setAllowedSecretTypes, {
         projectId,
@@ -368,7 +371,101 @@ describe("authenticated secrets access model", () => {
         projectId,
         allowedSecretTypes: ["login"],
       }),
-    ).rejects.toThrow("Move or archive");
+    ).resolves.toEqual({
+      status: "blocked",
+      blockedTypes: ["webConfig"],
+    });
+  });
+
+  test("moves all secrets of a blocked type before removing the project restriction", async () => {
+    const { t, admin } = await initializedVault();
+    const { developer } = await inviteAndLinkDeveloper(t, admin);
+    const sourceProjectId = await admin.mutation(api.projects.create, {
+      name: "Source project",
+      allowedSecretTypes: ["login", "apiKey"],
+    });
+    const targetProjectId = await admin.mutation(api.projects.create, {
+      name: "API destination",
+      allowedSecretTypes: ["apiKey"],
+    });
+    const invalidTargetProjectId = await admin.mutation(api.projects.create, {
+      name: "Login destination",
+      allowedSecretTypes: ["login"],
+    });
+
+    for (const [cryptoId, name] of [
+      ["move-api-one", "API one"],
+      ["move-api-two", "API two"],
+    ]) {
+      await admin.mutation(api.secrets.save, {
+        environment: "local",
+        projectId: sourceProjectId,
+        cryptoId,
+        name,
+        type: "apiKey",
+        payload: encryptedPayload,
+      });
+    }
+    await admin.mutation(api.secrets.save, {
+      environment: "local",
+      projectId: sourceProjectId,
+      cryptoId: "keep-login",
+      name: "Login stays",
+      type: "login",
+      payload: encryptedPayload,
+    });
+
+    await expect(
+      admin.mutation(api.projects.setAllowedSecretTypes, {
+        projectId: sourceProjectId,
+        allowedSecretTypes: ["login"],
+      }),
+    ).resolves.toEqual({
+      status: "blocked",
+      blockedTypes: ["apiKey"],
+    });
+    await expect(
+      admin.mutation(api.projects.moveSecretsOfTypeAndUpdateProject, {
+        sourceProjectId,
+        targetProjectId: invalidTargetProjectId,
+        secretType: "apiKey",
+        allowedSecretTypes: ["login"],
+      }),
+    ).rejects.toThrow("does not allow API Key");
+    await expect(
+      developer.mutation(api.projects.moveSecretsOfTypeAndUpdateProject, {
+        sourceProjectId,
+        targetProjectId,
+        secretType: "apiKey",
+        allowedSecretTypes: ["login"],
+      }),
+    ).rejects.toThrow("Admin role required");
+
+    await expect(
+      admin.mutation(api.projects.moveSecretsOfTypeAndUpdateProject, {
+        sourceProjectId,
+        targetProjectId,
+        secretType: "apiKey",
+        allowedSecretTypes: ["login"],
+      }),
+    ).resolves.toEqual({ movedCount: 2 });
+
+    const projects = await admin.query(api.projects.list, {});
+    expect(
+      projects.find((project) => project._id === sourceProjectId)
+        ?.allowedSecretTypes,
+    ).toEqual(["login"]);
+    const rows = await admin.query(api.secrets.list, { environment: "local" });
+    expect(
+      rows
+        .filter((row) => row.definition.type === "apiKey")
+        .every(
+          (row) => row.definition.projectId === targetProjectId,
+        ),
+    ).toBe(true);
+    expect(
+      rows.find((row) => row.definition.type === "login")?.definition.projectId,
+    ).toBe(sourceProjectId);
   });
 
   test("converts an API Key to an Introducer API Key as a one-way transition", async () => {

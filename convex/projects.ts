@@ -1,7 +1,10 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { appendAudit, requireActor, requireAdmin } from "./lib/access";
-import { GENERAL_PROJECT_NORMALIZED_NAME } from "./lib/projects";
+import {
+  GENERAL_PROJECT_NORMALIZED_NAME,
+  projectAllowsSecretType,
+} from "./lib/projects";
 import { secretTypeValidator, type SecretType } from "./validators";
 
 const ALL_SECRET_TYPES: SecretType[] = [
@@ -99,7 +102,13 @@ export const setAllowedSecretTypes = mutation({
     projectId: v.id("projects"),
     allowedSecretTypes: v.array(secretTypeValidator),
   },
-  returns: v.null(),
+  returns: v.union(
+    v.object({ status: v.literal("updated") }),
+    v.object({
+      status: v.literal("blocked"),
+      blockedTypes: v.array(secretTypeValidator),
+    }),
+  ),
   handler: async (ctx, args) => {
     const actor = await requireAdmin(ctx);
     const project = await ctx.db.get("projects", args.projectId);
@@ -107,6 +116,7 @@ export const setAllowedSecretTypes = mutation({
       throw new Error("Project not found.");
     }
     const allowedSecretTypes = cleanAllowedSecretTypes(args.allowedSecretTypes);
+    const blockedTypes: SecretType[] = [];
     for (const secretType of ALL_SECRET_TYPES) {
       if (allowedSecretTypes.includes(secretType)) continue;
       const conflictingSecret = await ctx.db
@@ -119,10 +129,11 @@ export const setAllowedSecretTypes = mutation({
         )
         .take(1);
       if (conflictingSecret.length > 0) {
-        throw new Error(
-          `Move or archive this project's ${secretTypeLabel(secretType)} secrets before removing that type.`,
-        );
+        blockedTypes.push(secretType);
       }
+    }
+    if (blockedTypes.length > 0) {
+      return { status: "blocked" as const, blockedTypes };
     }
     await ctx.db.patch("projects", args.projectId, {
       allowedSecretTypes,
@@ -135,7 +146,100 @@ export const setAllowedSecretTypes = mutation({
       targetId: args.projectId,
       context: allowedSecretTypes.join(","),
     });
-    return null;
+    return { status: "updated" as const };
+  },
+});
+
+export const moveSecretsOfTypeAndUpdateProject = mutation({
+  args: {
+    sourceProjectId: v.id("projects"),
+    targetProjectId: v.id("projects"),
+    secretType: secretTypeValidator,
+    allowedSecretTypes: v.array(secretTypeValidator),
+  },
+  returns: v.object({ movedCount: v.number() }),
+  handler: async (ctx, args) => {
+    const actor = await requireAdmin(ctx);
+    if (args.sourceProjectId === args.targetProjectId) {
+      throw new Error("Choose a different destination project.");
+    }
+    const [sourceProject, targetProject] = await Promise.all([
+      ctx.db.get("projects", args.sourceProjectId),
+      ctx.db.get("projects", args.targetProjectId),
+    ]);
+    if (!sourceProject || sourceProject.status !== "active") {
+      throw new Error("Source project not found.");
+    }
+    if (!targetProject || targetProject.status !== "active") {
+      throw new Error("Destination project not found.");
+    }
+    if (!projectAllowsSecretType(targetProject, args.secretType)) {
+      throw new Error(
+        `The destination project does not allow ${secretTypeLabel(args.secretType)} secrets.`,
+      );
+    }
+
+    const allowedSecretTypes = cleanAllowedSecretTypes(args.allowedSecretTypes);
+    if (allowedSecretTypes.includes(args.secretType)) {
+      throw new Error("The selected secret type is still enabled.");
+    }
+    for (const otherType of ALL_SECRET_TYPES) {
+      if (
+        otherType === args.secretType ||
+        allowedSecretTypes.includes(otherType)
+      ) {
+        continue;
+      }
+      const conflictingSecret = await ctx.db
+        .query("secretDefinitions")
+        .withIndex("by_projectId_and_type_and_status", (q) =>
+          q
+            .eq("projectId", args.sourceProjectId)
+            .eq("type", otherType)
+            .eq("status", "active"),
+        )
+        .take(1);
+      if (conflictingSecret.length > 0) {
+        throw new Error(
+          `Move or archive this project's ${secretTypeLabel(otherType)} secrets before removing that type.`,
+        );
+      }
+    }
+
+    const secrets = await ctx.db
+      .query("secretDefinitions")
+      .withIndex("by_projectId_and_type_and_status", (q) =>
+        q
+          .eq("projectId", args.sourceProjectId)
+          .eq("type", args.secretType)
+          .eq("status", "active"),
+      )
+      .take(1001);
+    if (secrets.length > 1000) {
+      throw new Error(
+        "This project has too many matching secrets to move in one operation.",
+      );
+    }
+
+    const now = Date.now();
+    for (const secret of secrets) {
+      await ctx.db.patch("secretDefinitions", secret._id, {
+        projectId: args.targetProjectId,
+        updatedAt: now,
+      });
+    }
+    await ctx.db.patch("projects", args.sourceProjectId, {
+      allowedSecretTypes,
+      updatedAt: now,
+    });
+    await appendAudit(ctx, {
+      actorUserId: actor._id,
+      action: "project.secretTypeSecretsMoved",
+      targetType: "project",
+      targetId: args.sourceProjectId,
+      context: `${args.secretType}:${secrets.length}:${args.targetProjectId}`,
+    });
+    return { movedCount: secrets.length };
   },
 });
 
