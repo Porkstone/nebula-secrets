@@ -5,6 +5,7 @@ import {
   Check,
   ChevronRight,
   CircleAlert,
+  CircleHelp,
   Clipboard,
   Clock3,
   Code2,
@@ -1860,8 +1861,6 @@ function SecretEditor({
     : secretTypes;
   const isConverting =
     row?.definition.type === "apiKey" && type === "introducerApiKey";
-  const canConvertInSelectedProject =
-    selectedProjectAllowedTypes.includes("introducerApiKey");
   const title = isConverting
     ? "Convert API Key"
     : row?.value
@@ -1950,8 +1949,29 @@ function SecretEditor({
             />
           </label>
           <label>
-            Secret type
+            <span className="field-label">
+              <span id="secret-type-label">Secret type</span>
+              {row?.definition.type === "apiKey" && (
+                <span
+                  className="help-tooltip"
+                  tabIndex={0}
+                  aria-label="Help for converting this secret"
+                  aria-describedby="secret-type-conversion-help"
+                >
+                  <CircleHelp size={15} aria-hidden="true" />
+                  <span
+                    className="help-tooltip-content"
+                    id="secret-type-conversion-help"
+                    role="tooltip"
+                  >
+                    Add a feature that lets the user convert a secret from API
+                    Key to Introducer API Key
+                  </span>
+                </span>
+              )}
+            </span>
             <select
+              aria-labelledby="secret-type-label"
               value={type}
               disabled={Boolean(row && row.definition.type !== "apiKey")}
               onChange={(event) => {
@@ -1968,13 +1988,6 @@ function SecretEditor({
                 </option>
               ))}
             </select>
-            {row?.definition.type === "apiKey" && (
-              <small className="field-hint">
-                {canConvertInSelectedProject
-                  ? "Select Introducer API Key to convert this secret while keeping its API key, endpoint, and notes."
-                  : "This project must allow Introducer API Keys before this secret can be converted."}
-              </small>
-            )}
           </label>
           <label className="wide">
             Project

@@ -1117,11 +1117,50 @@ textarea:focus {
   color: var(--danger);
   font-size: 0.68rem;
 }
-.field-hint {
+.field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  width: fit-content;
+}
+.help-tooltip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
   color: var(--ink-faint);
-  font-size: 0.66rem;
+  cursor: help;
+}
+.help-tooltip:focus {
+  border-radius: 999px;
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.help-tooltip-content {
+  position: absolute;
+  z-index: 10;
+  bottom: calc(100% + 0.55rem);
+  left: 50%;
+  width: max-content;
+  max-width: min(270px, 70vw);
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  background: var(--ink);
+  box-shadow: 0 8px 24px rgba(8, 26, 20, 0.18);
+  color: white;
+  font-size: 0.68rem;
   font-weight: 500;
   line-height: 1.4;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-28%, 0.2rem);
+  transition:
+    opacity 0.12s,
+    transform 0.12s;
+}
+.help-tooltip:hover .help-tooltip-content,
+.help-tooltip:focus .help-tooltip-content {
+  opacity: 1;
+  transform: translate(-28%, 0);
 }
 .conversion-note {
   background: #edf0f8;
