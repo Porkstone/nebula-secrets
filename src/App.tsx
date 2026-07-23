@@ -136,6 +136,38 @@ const environmentLabels: Record<Environment, string> = {
   uat: "UAT",
   production: "Production",
 };
+
+function environmentStorageKey(userId: Id<"users">) {
+  return `nebula-secrets:${userId}:last-environment`;
+}
+
+function projectStorageKey(userId: Id<"users">) {
+  return `nebula-secrets:${userId}:last-project`;
+}
+
+function readStoredValue(key: string) {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredValue(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Persistence is optional when storage is unavailable or restricted.
+  }
+}
+
+function readStoredEnvironment(userId: Id<"users">): Environment {
+  const stored = readStoredValue(environmentStorageKey(userId));
+  return environments.includes(stored as Environment)
+    ? (stored as Environment)
+    : "local";
+}
+
 const secretTypes: SecretType[] = [
   "login",
   "apiKey",
@@ -1030,7 +1062,9 @@ function Dashboard({
   const [section, setSection] = useState<
     "vault" | "devices" | "admin" | "authentication" | "audit"
   >("vault");
-  const [environment, setEnvironment] = useState<Environment>("local");
+  const [environment, setEnvironment] = useState<Environment>(() =>
+    readStoredEnvironment(user._id),
+  );
   const [mobileNav, setMobileNav] = useState(false);
 
   useEffect(() => {
@@ -1044,6 +1078,14 @@ function Dashboard({
       ),
     [access],
   );
+
+  function selectEnvironment(nextEnvironment: Environment) {
+    setEnvironment(nextEnvironment);
+    writeStoredValue(
+      environmentStorageKey(user._id),
+      nextEnvironment,
+    );
+  }
 
   return (
     <div className="app-shell">
@@ -1178,7 +1220,7 @@ function Dashboard({
               deviceId={deviceId}
               environment={environment}
               allowedEnvironments={allowedEnvironments}
-              onEnvironmentChange={setEnvironment}
+              onEnvironmentChange={selectEnvironment}
             />
           )}
           {section === "devices" && (
@@ -1277,7 +1319,9 @@ function Vault({
     rows: DecryptedSecretRow[];
   }>({ token: "", rows: [] });
   const [search, setSearch] = useState("");
-  const [projectFilter, setProjectFilter] = useState("all");
+  const [projectFilter, setProjectFilter] = useState(
+    () => readStoredValue(projectStorageKey(user._id)) ?? "all",
+  );
   const [showProjects, setShowProjects] = useState(false);
   const [editorRow, setEditorRow] = useState<SecretRow | "new" | null>(null);
   const [detailSecretId, setDetailSecretId] =
@@ -1337,6 +1381,18 @@ function Vault({
     () => new Map((projects ?? []).map((project) => [project._id, project])),
     [projects],
   );
+  const effectiveProjectFilter =
+    projectFilter === "all" ||
+    !projects ||
+    projects.some((project) => project._id === projectFilter)
+      ? projectFilter
+      : "all";
+
+  useEffect(() => {
+    if (projects && effectiveProjectFilter !== projectFilter) {
+      writeStoredValue(projectStorageKey(user._id), "all");
+    }
+  }, [effectiveProjectFilter, projectFilter, projects, user._id]);
   const generalProjectId = projects?.find(
     (project) => project.normalizedName === "general",
   )?._id;
@@ -1345,7 +1401,10 @@ function Vault({
     return decryptedRows.filter((row) => {
       const rowProjectId =
         row.definition.projectId ?? generalProjectId ?? "general";
-      if (projectFilter !== "all" && rowProjectId !== projectFilter)
+      if (
+        effectiveProjectFilter !== "all" &&
+        rowProjectId !== effectiveProjectFilter
+      )
         return false;
       if (!needle) return true;
       const projectName = row.definition.projectId
@@ -1355,7 +1414,13 @@ function Vault({
         .toLowerCase()
         .includes(needle);
     });
-  }, [decryptedRows, generalProjectId, projectById, projectFilter, search]);
+  }, [
+    decryptedRows,
+    effectiveProjectFilter,
+    generalProjectId,
+    projectById,
+    search,
+  ]);
   const groupedRows = useMemo(() => {
     const groups = new Map<
       string,
@@ -1487,8 +1552,15 @@ function Vault({
               <span>Project</span>
               <select
                 aria-label="Filter by project"
-                value={projectFilter}
-                onChange={(event) => setProjectFilter(event.target.value)}
+                value={effectiveProjectFilter}
+                onChange={(event) => {
+                  const nextProject = event.target.value;
+                  setProjectFilter(nextProject);
+                  writeStoredValue(
+                    projectStorageKey(user._id),
+                    nextProject,
+                  );
+                }}
               >
                 <option value="all">All projects</option>
                 {projects.map((project) => (
