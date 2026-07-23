@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nebula Secrets — Space UI directions</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap");
+
+      * { box-sizing: border-box; }
+      :root {
+        color-scheme: dark;
+        font-family: "DM Sans", system-ui, sans-serif;
+        background: #090b11;
+        color: #f4f6fb;
+        font-synthesis: none;
+      }
+      html { scroll-behavior: smooth; }
+      body { margin: 0; min-width: 320px; background:
+        radial-gradient(circle at 16% -10%, rgba(89, 116, 255, .18), transparent 31rem),
+        radial-gradient(circle at 88% 4%, rgba(108, 245, 211, .08), transparent 28rem),
+        #090b11; }
+      button, input, select { font: inherit; }
+      button { color: inherit; }
+      svg { display: block; }
+
+      .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+      .icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+      .icon.sm { width: 15px; height: 15px; }
+      .icon.lg { width: 21px; height: 21px; }
+
+      .review-bar {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 28px;
+        min-height: 76px;
+        padding: 14px max(24px, calc((100vw - 1440px) / 2));
+        border-bottom: 1px solid rgba(255,255,255,.08);
+        background: rgba(9, 11, 17, .86);
+        backdrop-filter: blur(18px);
+      }
+      .review-title { display: flex; align-items: center; gap: 12px; min-width: 210px; }
+      .review-title > span:first-child {
+        display: grid; place-items: center; width: 37px; height: 37px; border-radius: 11px;
+        color: #9ef5e5; background: linear-gradient(145deg, #25334e, #152220);
+        border: 1px solid rgba(158,245,229,.2);
+      }
+      .review-title strong { display: block; font-family: "Space Grotesk", sans-serif; font-size: 14px; letter-spacing: -.01em; }
+      .review-title small { display: block; margin-top: 2px; color: #7e8596; font-size: 10px; text-transform: uppercase; letter-spacing: .12em; }
+      .review-tabs { display: flex; gap: 8px; padding: 5px; border-radius: 14px; background: #11151e; border: 1px solid rgba(255,255,255,.07); }
+      .review-tabs label {
+        display: flex; align-items: center; gap: 8px; padding: 9px 13px; border-radius: 10px;
+        color: #8e95a5; font-size: 12px; font-weight: 650; cursor: pointer; transition: .2s ease;
+      }
+      .review-tabs label span {
+        display: grid; place-items: center; width: 20px; height: 20px; border-radius: 6px;
+        color: #cad0dc; background: rgba(255,255,255,.06); font-size: 9px;
+      }
+      #choice-a:checked ~ .review-bar label[for="choice-a"],
+      #choice-b:checked ~ .review-bar label[for="choice-b"],
+      #choice-c:checked ~ .review-bar label[for="choice-c"] { color: #fff; background: #262c39; box-shadow: 0 1px 0 rgba(255,255,255,.07) inset; }
+      .review-note { min-width: 210px; color: #6f7685; font-size: 11px; line-height: 1.45; text-align: right; }
+      .review-note strong { color: #adb3c0; font-weight: 600; }
+      .choice { position: fixed; opacity: 0; pointer-events: none; }
+      .concepts { padding: 40px 32px 64px; }
+      .concept { display: none; width: min(1440px, 100%); margin: 0 auto; }
+      #choice-a:checked ~ .concepts .concept-a,
+      #choice-b:checked ~ .concepts .concept-b,
+      #choice-c:checked ~ .concepts .concept-c { display: block; animation: enter .35s ease both; }
+      @keyframes enter { from { opacity: 0; transform: translateY(8px); } }
+      .concept-meta { display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; margin: 0 4px 22px; }
+      .concept-kicker { display: block; margin-bottom: 7px; color: #7e8596; font-size: 10px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
+      .concept-meta h1 { margin: 0; font-family: "Space Grotesk", sans-serif; font-size: clamp(24px, 2.4vw, 36px); letter-spacing: -.04em; }
+      .concept-meta p { max-width: 570px; margin: 0; color: #8b92a1; font-size: 13px; line-height: 1.6; text-align: right; }
+      .mockup {
+        position: relative; display: grid; grid-template-columns: 232px 1fr; min-height: 840px; overflow: hidden;
+        border: 1px solid rgba(255,255,255,.12); border-radius: 21px; box-shadow: 0 34px 100px rgba(0,0,0,.42);
+      }
+      .mockup button, .mockup input, .mockup select { pointer-events: none; }
+      .mock-sidebar { position: relative; z-index: 2; display: flex; flex-direction: column; }
+      .mock-main { min-width: 0; position: relative; z-index: 1; }
+      .mock-brand { display: flex; align-items: center; gap: 11px; height: 80px; padding: 0 24px; }
+      .mock-brand-logo { position: relative; display: grid; place-items: center; width: 35px; height: 35px; border-radius: 10px; }
+      .mock-brand-name { font-size: 15px; letter-spacing: -.02em; }
+      .mock-brand-name strong { font-weight: 700; }
+      .mock-nav { display: grid; gap: 5px; padding: 20px 14px; }
+      .mock-nav button {
+        position: relative; display: flex; align-items: center; gap: 12px; width: 100%; padding: 11px 13px;
+        border: 0; border-radius: 10px; background: transparent; text-align: left; font-size: 12px; font-weight: 600;
+      }
+      .mock-nav .nav-spacer { height: 10px; }
+      .mock-nav-label { padding: 0 13px 5px; font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .18em; }
+      .mock-security { margin: auto 14px 18px; padding: 13px; display: grid; grid-template-columns: auto 1fr; gap: 9px; border-radius: 12px; }
+      .mock-security strong { display: block; font-size: 10px; }
+      .mock-security span { display: block; margin-top: 3px; font-size: 8px; line-height: 1.3; }
+      .mock-topbar { position: relative; display: flex; align-items: center; justify-content: space-between; height: 80px; padding: 0 30px; }
+      .top-title small { display: block; margin-bottom: 3px; font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: .16em; }
+      .top-title strong { display: block; font-family: "Space Grotesk", sans-serif; font-size: 16px; font-weight: 600; }
+      .top-actions { display: flex; align-items: center; gap: 10px; }
+      .sync-chip { display: flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: 99px; font-size: 9px; font-weight: 650; }
+      .sync-dot { width: 6px; height: 6px; border-radius: 50%; box-shadow: 0 0 9px currentColor; background: currentColor; }
+      .avatar { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; font-size: 10px; font-weight: 700; }
+      .user-meta { line-height: 1.2; }
+      .user-meta strong { display: block; font-size: 10px; }
+      .user-meta span { font-size: 8px; }
+      .icon-button { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; border: 0; background: transparent; }
+      .mock-content { padding: 22px 30px 32px; }
+      .env-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 25px; }
+      .env-tabs { display: flex; gap: 4px; padding: 4px; border-radius: 12px; }
+      .env-tabs button { display: flex; align-items: center; gap: 6px; padding: 8px 13px; border: 0; border-radius: 9px; background: transparent; font-size: 10px; font-weight: 650; }
+      .env-health { display: flex; align-items: center; gap: 8px; font-size: 9px; }
+      .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 30px; margin-bottom: 22px; }
+      .page-head .eyebrow { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .13em; }
+      .page-head h2 { margin: 0; font-family: "Space Grotesk", sans-serif; font-size: clamp(25px, 2.2vw, 34px); font-weight: 600; letter-spacing: -.045em; }
+      .page-head p { margin: 7px 0 0; font-size: 10px; }
+      .head-buttons { display: flex; gap: 8px; }
+      .action-button { display: flex; align-items: center; gap: 8px; padding: 9px 13px; border-radius: 10px; font-size: 10px; font-weight: 700; }
+      .toolbar { display: grid; grid-template-columns: minmax(250px, 1fr) 185px auto; gap: 10px; align-items: center; margin-bottom: 21px; }
+      .search { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 13px; border-radius: 11px; }
+      .search input { width: 100%; border: 0; outline: 0; color: inherit; background: transparent; font-size: 10px; }
+      .search input::placeholder { color: inherit; opacity: .65; }
+      .select-box { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; border-radius: 11px; }
+      .select-box span { font-size: 8px; text-transform: uppercase; letter-spacing: .09em; }
+      .select-box strong { margin-left: auto; font-size: 10px; }
+      .result-count { padding: 0 6px; font-size: 9px; white-space: nowrap; }
+      .project-stack { display: grid; gap: 16px; }
+      .project-card { overflow: hidden; border-radius: 14px; }
+      .project-card > header { display: flex; align-items: center; justify-content: space-between; height: 43px; padding: 0 15px; }
+      .project-name { display: flex; align-items: center; gap: 8px; font-size: 10px; font-weight: 700; }
+      .project-card header small { font-size: 8px; }
+      .secret-list { display: grid; }
+      .secret-row { display: grid; grid-template-columns: 38px minmax(0, 1.5fr) minmax(120px, .7fr) auto auto; align-items: center; gap: 12px; min-height: 64px; padding: 8px 13px; }
+      .secret-icon { display: grid; place-items: center; width: 35px; height: 35px; border-radius: 10px; }
+      .secret-name strong { display: block; font-size: 10px; }
+      .secret-name small { display: block; margin-top: 4px; font-size: 8px; }
+      .secret-version span { display: block; margin-bottom: 3px; font-size: 7px; text-transform: uppercase; letter-spacing: .1em; }
+      .secret-version strong { display: block; font-size: 9px; font-weight: 550; }
+      .status { display: flex; align-items: center; gap: 6px; padding: 6px 9px; border-radius: 99px; font-size: 8px; font-weight: 700; }
+      .status::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+      .row-action { display: grid; place-items: center; width: 29px; height: 29px; border-radius: 8px; }
+
+      /* A — Orbital Command */
+      .orbital { color: #e7f2f5; font-family: "Space Grotesk", sans-serif; background:
+        radial-gradient(circle at 76% 14%, rgba(31,213,202,.08), transparent 26rem),
+        #071015; }
+      .orbital::after {
+        content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .16;
+        background-image: linear-gradient(rgba(124,239,231,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(124,239,231,.08) 1px, transparent 1px);
+        background-size: 32px 32px; mask-image: linear-gradient(to right, transparent 15%, #000 70%);
+      }
+      .orbital .mock-sidebar { background: rgba(3,12,16,.94); border-right: 1px solid #173038; }
+      .orbital .mock-brand { border-bottom: 1px solid #14282f; }
+      .orbital .mock-brand-logo { color: #6cf3e6; background: #0b292d; border: 1px solid #1d4e50; box-shadow: 0 0 24px rgba(80,229,218,.12); }
+      .orbital .mock-brand-logo::after { content:""; position:absolute; inset:-5px; border:1px solid rgba(108,243,230,.12); border-radius:13px; }
+      .orbital .mock-brand-name { letter-spacing: .02em; }
+      .orbital .mock-brand-name strong { color: #71eee3; }
+      .orbital .mock-nav-label { color: #41616a; }
+      .orbital .mock-nav button { color: #66828a; }
+      .orbital .mock-nav button.active { color: #a6fff7; background: linear-gradient(90deg, #0e373a, #0b2329); border: 1px solid #19464a; box-shadow: 0 0 22px rgba(50,220,207,.06) inset; }
+      .orbital .mock-nav button.active::before { content:""; position:absolute; left:-14px; width:2px; height:22px; background:#68f3e6; box-shadow:0 0 13px #68f3e6; }
+      .orbital .mock-security { color:#78bcb6; background:#091d22; border:1px solid #16353b; }
+      .orbital .mock-security span { color:#466b71; }
+      .orbital .mock-topbar { background: rgba(5,16,22,.76); border-bottom:1px solid #173038; }
+      .orbital .top-title small { color:#3e6971; }
+      .orbital .top-title strong { color:#c7e4e7; letter-spacing:.02em; }
+      .orbital .sync-chip { color:#6ee9dc; background:#0a292c; border:1px solid #174448; }
+      .orbital .avatar { color:#08161a; background:#6feee3; clip-path: polygon(21% 0, 79% 0, 100% 21%, 100% 79%, 79% 100%, 21% 100%, 0 79%, 0 21%); }
+      .orbital .user-meta span { color:#496a72; }
+      .orbital .icon-button { color:#59767c; border:1px solid #18353b; }
+      .orbital .mock-content { background: linear-gradient(180deg, rgba(7,18,24,.28), rgba(4,13,18,.82)); }
+      .orbital .env-tabs { background:#081c22; border:1px solid #18333b; }
+      .orbital .env-tabs button { color:#496a72; }
+      .orbital .env-tabs button.active { color:#091618; background:#6ce9de; box-shadow:0 0 20px rgba(108,233,222,.16); }
+      .orbital .env-health { color:#55737a; }
+      .orbital .env-health strong { color:#68ddcf; font-weight:600; }
+      .orbital .page-head .eyebrow { color:#4e817f; }
+      .orbital .page-head h2 { text-transform:uppercase; letter-spacing:-.03em; }
+      .orbital .page-head p { color:#59777d; }
+      .orbital .action-button { color:#7d9da2; border:1px solid #1a3940; background:#0a1a20; }
+      .orbital .action-button.primary { color:#061315; border-color:#6aeee2; background:#6aeee2; box-shadow:0 0 24px rgba(106,238,226,.13); }
+      .orbital .search, .orbital .select-box { color:#638087; background:#08191f; border:1px solid #17343b; }
+      .orbital .select-box strong { color:#b1ced1; }
+      .orbital .result-count { color:#496970; }
+      .orbital .project-card { background:rgba(6,18,23,.87); border:1px solid #18343b; box-shadow: 0 12px 35px rgba(0,0,0,.13); }
+      .orbital .project-card > header { color:#7b9ba0; background:#0a2026; border-bottom:1px solid #18343b; }
+      .orbital .project-card header small { color:#405f66; }
+      .orbital .secret-row { border-bottom:1px solid #112a30; }
+      .orbital .secret-row:last-child { border-bottom:0; }
+      .orbital .secret-icon { color:#60ddd2; background:#0b292d; border:1px solid #17484a; }
+      .orbital .secret-name small, .orbital .secret-version span { color:#3e6169; }
+      .orbital .secret-version strong { color:#78959a; font-family:ui-monospace,monospace; }
+      .orbital .status { color:#69dfd2; background:#0a292c; border:1px solid #174448; }
+      .orbital .row-action { color:#58757b; border:1px solid #18353b; }
+
+      /* B — Aurora Vault */
+      .aurora { color: #f5f1ff; font-family: "DM Sans", sans-serif; background:
+        radial-gradient(ellipse at 72% -10%, rgba(123,94,255,.42), transparent 44%),
+        radial-gradient(ellipse at 28% 105%, rgba(31,234,196,.14), transparent 43%),
+        linear-gradient(145deg, #17102b, #100d24 55%, #0e1724); }
+      .aurora::before { content:""; position:absolute; width:620px; height:620px; right:-190px; top:-300px; border:1px solid rgba(255,255,255,.07); border-radius:50%; box-shadow:0 0 0 64px rgba(255,255,255,.018), 0 0 0 126px rgba(255,255,255,.012); pointer-events:none; }
+      .aurora::after { content:"✦  ·   ✧     ·  ✦        ·     ✧   ·"; position:absolute; top:26px; right:72px; color:rgba(255,255,255,.31); letter-spacing:18px; font-size:10px; pointer-events:none; }
+      .aurora .mock-sidebar { background:rgba(18,11,39,.68); border-right:1px solid rgba(216,203,255,.11); backdrop-filter:blur(25px); }
+      .aurora .mock-brand { border-bottom:1px solid rgba(216,203,255,.09); }
+      .aurora .mock-brand-logo { color:#fff; background:linear-gradient(145deg,#9f7cff,#6c50ef 55%,#3ddcc6); box-shadow:0 9px 28px rgba(104,76,239,.35); }
+      .aurora .mock-brand-name strong { color:#cbbaff; }
+      .aurora .mock-nav-label { color:#655a80; }
+      .aurora .mock-nav button { color:#807697; }
+      .aurora .mock-nav button.active { color:#fff; background:linear-gradient(90deg,rgba(134,101,244,.26),rgba(114,80,228,.08)); border:1px solid rgba(176,151,255,.18); }
+      .aurora .mock-nav button.active::after { content:""; margin-left:auto; width:5px; height:5px; border-radius:50%; background:#65efd8; box-shadow:0 0 10px #65efd8; }
+      .aurora .mock-security { color:#b3a6d0; background:rgba(73,53,114,.2); border:1px solid rgba(197,179,255,.12); }
+      .aurora .mock-security span { color:#70668a; }
+      .aurora .mock-topbar { background:rgba(26,17,50,.39); border-bottom:1px solid rgba(217,204,255,.1); backdrop-filter:blur(20px); }
+      .aurora .top-title small { color:#83739f; }
+      .aurora .top-title strong { color:#eee8ff; }
+      .aurora .sync-chip { color:#72e8d4; background:rgba(31,159,143,.12); border:1px solid rgba(89,232,210,.17); }
+      .aurora .avatar { color:#fff; background:linear-gradient(145deg,#8f6af5,#6241d7); box-shadow:0 7px 18px rgba(89,58,190,.26); }
+      .aurora .user-meta span { color:#786e90; }
+      .aurora .icon-button { color:#9387ae; background:rgba(255,255,255,.035); border:1px solid rgba(255,255,255,.08); }
+      .aurora .env-tabs { background:rgba(17,10,35,.46); border:1px solid rgba(226,216,255,.1); backdrop-filter:blur(12px); }
+      .aurora .env-tabs button { color:#7c7193; }
+      .aurora .env-tabs button.active { color:#fff; background:linear-gradient(135deg,#8464ea,#6849d9); box-shadow:0 8px 20px rgba(80,52,175,.25); }
+      .aurora .env-health { color:#716883; }
+      .aurora .env-health strong { color:#74e8d5; }
+      .aurora .page-head .eyebrow { color:#8e7eb8; }
+      .aurora .page-head .eyebrow .icon { color:#70e9d5; }
+      .aurora .page-head h2 { background:linear-gradient(90deg,#fff,#c8baf2); background-clip:text; color:transparent; }
+      .aurora .page-head p { color:#817591; }
+      .aurora .action-button { color:#b9accd; border:1px solid rgba(221,207,255,.13); background:rgba(255,255,255,.045); backdrop-filter:blur(12px); }
+      .aurora .action-button.primary { color:#fff; border-color:rgba(179,155,255,.4); background:linear-gradient(135deg,#8b68f2,#6545d6); box-shadow:0 10px 26px rgba(75,43,172,.28); }
+      .aurora .search, .aurora .select-box { color:#887c9d; background:rgba(21,13,42,.54); border:1px solid rgba(221,207,255,.11); backdrop-filter:blur(12px); }
+      .aurora .select-box strong { color:#c9bddb; }
+      .aurora .result-count { color:#766b89; }
+      .aurora .project-card { background:rgba(29,19,53,.49); border:1px solid rgba(220,208,255,.12); box-shadow:0 18px 45px rgba(5,0,18,.2); backdrop-filter:blur(18px); }
+      .aurora .project-card > header { color:#c0b2d9; background:rgba(255,255,255,.035); border-bottom:1px solid rgba(220,208,255,.1); }
+      .aurora .project-card header small { color:#766a8c; }
+      .aurora .secret-row { border-bottom:1px solid rgba(218,206,255,.085); }
+      .aurora .secret-row:last-child { border-bottom:0; }
+      .aurora .secret-icon { color:#d6c8ff; background:linear-gradient(145deg,rgba(132,97,236,.28),rgba(71,208,187,.12)); border:1px solid rgba(175,151,255,.16); }
+      .aurora .secret-name small, .aurora .secret-version span { color:#776c8c; }
+      .aurora .secret-version strong { color:#a89dbb; }
+      .aurora .status { color:#75e7d4; background:rgba(42,193,169,.1); border:1px solid rgba(93,230,210,.15); }
+      .aurora .row-action { color:#9185a7; background:rgba(255,255,255,.035); border:1px solid rgba(255,255,255,.075); }
+
+      /* C — Lunar Archive */
+      .lunar { color:#16212a; color-scheme:light; font-family:"Manrope",sans-serif; background:
+        radial-gradient(circle at 82% 4%, rgba(245,124,76,.11), transparent 25rem),
+        linear-gradient(135deg,#edf0f0,#f8f7f1 58%,#eef0ed); }
+      .lunar::after {
+        content:""; position:absolute; right:48px; top:33px; width:110px; height:1px; background:#cbd0cc;
+        box-shadow:18px 7px 0 -0.2px #d3d6d3, 72px -6px 0 -0.2px #d3d6d3; transform:rotate(-18deg); pointer-events:none;
+      }
+      .lunar .mock-sidebar { background:#151e24; color:#edf1ef; border-right:1px solid #27343a; }
+      .lunar .mock-brand { border-bottom:1px solid #29343a; }
+      .lunar .mock-brand-logo { color:#162129; background:#f17b4f; border-radius:50% 50% 50% 12px; }
+      .lunar .mock-brand-name strong { color:#f28a64; }
+      .lunar .mock-nav-label { color:#5e6c72; }
+      .lunar .mock-nav button { color:#829097; }
+      .lunar .mock-nav button.active { color:#172128; background:#eef0ed; box-shadow:0 8px 18px rgba(0,0,0,.12); }
+      .lunar .mock-nav button.active .icon { color:#e66f46; }
+      .lunar .mock-security { color:#b1bebc; background:#1d292f; border:1px solid #2d3b42; }
+      .lunar .mock-security .icon { color:#ee815a; }
+      .lunar .mock-security span { color:#687981; }
+      .lunar .mock-topbar { background:rgba(247,247,242,.72); border-bottom:1px solid #daddd9; backdrop-filter:blur(18px); }
+      .lunar .top-title small { color:#919994; }
+      .lunar .top-title strong { color:#263239; }
+      .lunar .sync-chip { color:#357569; background:#e0ede9; border:1px solid #c9ded8; }
+      .lunar .avatar { color:#fff; background:#1b2930; border-radius:50%; }
+      .lunar .user-meta span { color:#8d9693; }
+      .lunar .icon-button { color:#65716f; border:1px solid #d8dcda; background:rgba(255,255,255,.4); }
+      .lunar .mock-content { background:linear-gradient(180deg,rgba(249,248,243,.44),rgba(239,241,238,.8)); }
+      .lunar .env-tabs { background:#e4e7e4; border:1px solid #d3d7d4; }
+      .lunar .env-tabs button { color:#7c8582; }
+      .lunar .env-tabs button.active { color:#fff; background:#1b282f; box-shadow:0 8px 17px rgba(16,27,33,.16); }
+      .lunar .env-health { color:#909895; }
+      .lunar .env-health strong { color:#2e6d61; }
+      .lunar .page-head .eyebrow { color:#e06f48; }
+      .lunar .page-head h2 { color:#1b272e; }
+      .lunar .page-head p { color:#7d8784; }
+      .lunar .action-button { color:#405057; border:1px solid #cfd4d0; background:rgba(255,255,255,.47); }
+      .lunar .action-button.primary { color:#fff; border-color:#e9754c; background:#e9754c; box-shadow:0 9px 20px rgba(201,82,42,.18); }
+      .lunar .search, .lunar .select-box { color:#7b8683; background:rgba(255,255,255,.6); border:1px solid #d3d7d3; }
+      .lunar .select-box strong { color:#334148; }
+      .lunar .result-count { color:#89928e; }
+      .lunar .project-card { background:rgba(255,255,255,.67); border:1px solid #d5dad5; box-shadow:0 11px 28px rgba(30,44,45,.05); }
+      .lunar .project-card > header { color:#3c4a50; background:#e6e9e6; border-bottom:1px solid #d5dad5; }
+      .lunar .project-card header small { color:#8a9491; }
+      .lunar .secret-row { border-bottom:1px solid #e0e3df; }
+      .lunar .secret-row:last-child { border-bottom:0; }
+      .lunar .secret-icon { color:#d96842; background:#fae8df; border:1px solid #f0d3c6; }
+      .lunar .secret-name small, .lunar .secret-version span { color:#929a97; }
+      .lunar .secret-version strong { color:#64706e; }
+      .lunar .status { color:#347367; background:#e2efe9; border:1px solid #cee2db; }
+      .lunar .row-action { color:#65716e; border:1px solid #d6dad6; background:#f4f5f2; }
+
+      @media (max-width: 900px) {
+        .review-note { display:none; }
+        .concept-meta { align-items:flex-start; flex-direction:column; gap:9px; }
+        .concept-meta p { text-align:left; }
+        .mockup { grid-template-columns:76px minmax(650px,1fr); overflow-x:auto; }
+        .mock-brand { justify-content:center; padding:0; }
+        .mock-brand-name, .mock-nav button span, .mock-nav-label, .mock-security > div { display:none; }
+        .mock-nav button { justify-content:center; }
+        .mock-security { display:grid; place-items:center; padding:12px; }
+      }
+      @media (max-width: 640px) {
+        .review-bar { align-items:flex-start; flex-direction:column; gap:11px; }
+        .review-tabs { width:100%; overflow-x:auto; }
+        .review-tabs label { flex:1; justify-content:center; white-space:nowrap; }
+        .concepts { padding:25px 14px 40px; }
+        .mockup { border-radius:14px; }
+      }
+    </style>
+  </head>
+  <body>
+    <svg class="sprite" aria-hidden="true">
+      <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v2"/></symbol>
+      <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></symbol>
+      <symbol id="i-laptop" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="11" rx="2"/><path d="M3 19h18M8 19v-1h8v1"/></symbol>
+      <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 5.4a3 3 0 0 1 0 5.6M17 14a5 5 0 0 1 3.5 5"/></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/></symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 2.7 8 7 10 4.3-2 7-5.5 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 4 4"/></symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7h7l2 2h9v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></symbol>
+      <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="12" r="4"/><path d="M12 12h9M17 12v3M20 12v2"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+      <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+      <symbol id="i-orbit" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><ellipse cx="12" cy="12" rx="9" ry="4" transform="rotate(-30 12 12)"/><circle cx="19" cy="7" r=".8" fill="currentColor" stroke="none"/></symbol>
+    </svg>
+
+    <input class="choice" type="radio" name="concept" id="choice-a" checked />
+    <input class="choice" type="radio" name="concept" id="choice-b" />
+    <input class="choice" type="radio" name="concept" id="choice-c" />
+
+    <header class="review-bar">
+      <div class="review-title">
+        <span><svg class="icon lg"><use href="#i-orbit"/></svg></span>
+        <span><strong>Nebula UI directions</strong><small>Home screen review</small></span>
+      </div>
+      <nav class="review-tabs" aria-label="Mockup concepts">
+        <label for="choice-a"><span>01</span> Orbital Command</label>
+        <label for="choice-b"><span>02</span> Aurora Vault</label>
+        <label for="choice-c"><span>03</span> Lunar Archive</label>
+      </nav>
+      <div class="review-note"><strong>Static visual prototypes</strong><br />Use the tabs to compare the directions</div>
+    </header>
+
+    <main class="concepts">
+      <section class="concept concept-a">
+        <div class="concept-meta">
+          <div><span class="concept-kicker">Direction 01 · Precision</span><h1>Orbital Command</h1></div>
+          <p>A focused mission-control interface for technical teams: deep-space black, luminous telemetry cyan, precise dividers and high information density.</p>
+        </div>
+        <div class="mockup orbital">
+          <aside class="mock-sidebar">
+            <div class="mock-brand"><span class="mock-brand-logo"><svg class="icon"><use href="#i-lock"/></svg></span><span class="mock-brand-name">Nebula <strong>Secrets</strong></span></div>
+            <nav class="mock-nav">
+              <span class="mock-nav-label">Workspace</span>
+              <button class="active"><svg class="icon"><use href="#i-grid"/></svg><span>Vault</span></button>
+              <button><svg class="icon"><use href="#i-laptop"/></svg><span>Devices</span></button>
+              <button><svg class="icon"><use href="#i-users"/></svg><span>Admin</span></button>
+              <div class="nav-spacer"></div><span class="mock-nav-label">System</span>
+              <button><svg class="icon"><use href="#i-settings"/></svg><span>Authentication</span></button>
+              <button><svg class="icon"><use href="#i-clock"/></svg><span>Audit log</span></button>
+            </nav>
+            <div class="mock-security"><svg class="icon"><use href="#i-shield"/></svg><div><strong>Encryption online</strong><span>Client-side · AES-256</span></div></div>
+          </aside>
+          <section class="mock-main">
+            <header class="mock-topbar">
+              <div class="top-title"><small>NR-01 / Secure workspace</small><strong>Secrets vault</strong></div>
+              <div class="top-actions"><span class="sync-chip"><i class="sync-dot"></i> All systems nominal</span><span class="avatar">NB</span><span class="user-meta"><strong>Nebula Admin</strong><span>System Administrator</span></span><button class="icon-button"><svg class="icon sm"><use href="#i-settings"/></svg></button></div>
+            </header>
+            <div class="mock-content">
+              <div class="env-row">
+                <div class="env-tabs"><button class="active">Local</button><button>Development</button><button>UAT</button><button>Production <svg class="icon sm"><use href="#i-lock"/></svg></button></div>
+                <span class="env-health"><i class="sync-dot"></i><strong>Encrypted channel</strong> · device verified</span>
+              </div>
+              <div class="page-head">
+                <div><span class="eyebrow"><svg class="icon sm"><use href="#i-orbit"/></svg> Sector / Local</span><h2>Local secrets</h2><p>Private values encrypted for this development identity.</p></div>
+                <div class="head-buttons"><button class="action-button"><svg class="icon sm"><use href="#i-folder"/></svg> Projects</button><button class="action-button primary"><svg class="icon sm"><use href="#i-plus"/></svg> New secret</button></div>
+              </div>
+              <div class="toolbar"><label class="search"><svg class="icon sm"><use href="#i-search"/></svg><input placeholder="Search secret registry…" /></label><div class="select-box"><span>Project</span><strong>All projects⌄</strong></div><span class="result-count">5 signals found</span></div>
+              <div class="project-stack">
+                <article class="project-card">
+                  <header><span class="project-name"><svg class="icon sm"><use href="#i-folder"/></svg> CORE PLATFORM</span><small>3 encrypted records</small></header>
+                  <div class="secret-list">
+                    <div class="secret-row"><span class="secret-icon"><svg class="icon"><use href="#i-key"/></svg></span><span class="secret-name"><strong>Convex deploy key</strong><small>API Key · infrastructure</small></span><span class="secret-version"><span>Rotation</span><strong>v4 · 2d ago</strong></span><span class="status">Encrypted</span><span class="row-action"><svg class="icon sm"><use href="#i-copy"/></svg></span></div>
+                    <div class="secret-row"><span class="secret-icon"><svg class="icon"><use href="#i-lock"/></svg></span><span class="secret-name"><strong>WorkOS client credentials</strong><small>Login · identity</small></span><span class="secret-version"><span>Rotation</span><strong>v2 · 18d ago</strong></span><span class="status">Encrypted</span><span class="row-action"><svg class="icon sm"><use href="#i-chev"/></svg></span></div>
+                    <div class="secret-row"><span class="secret-icon"><svg class="icon"><use href="#i-key"/></svg></span><span class="secret-name"><strong>Resend production API</strong><small>API Key · messaging</small></span><span class="secret-version"><span>Rotation</span><strong>v7 · 1mo ago</strong></span><span class="status">Encrypted</span><span class="row-action"><svg class="icon sm"><use href="#i-copy"/></svg></span></div>
+                  </div>
+                </article>
+                <article class="project-card">
+                  <header><span class="project-name"><svg class="icon sm"><use href="#i-folder"/></svg> OBSERVABILITY</span><small>2 encrypted records</small></header>
+                  <div class="secret-list">
+                    <div class="secret-row"><span class="secret-icon"><svg class="icon"><use href="#i-key"/></svg></span><span class="secret-name"><strong>Sentry ingest token</strong><small>API Key · monitoring</small></span><span class="secret-version"><span>Rotation</span><strong>v3 · 6d ago</strong></span><span class="status">Encrypted</span><span class="row-action"><svg class="icon sm"><use href="#i-copy"/></svg></span></div>
+                    <div class="secret-row"><span class="secret-icon"><svg class="icon"><use href="#i-lock"/></svg></span><span class="secret-name"><strong>Grafana service account</strong><small>Login · analytics</small></span><span class="secret-version"><span>Rotation</span><strong>v1 · 3mo ago</strong></span><span class="status">Encrypted</span><span class="row-action"><svg class="icon sm"><use href="#i-chev"/></svg></span></div>
+                  </div>
+                </article>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="concept concept-b">
+        <div class="concept-meta">
+          <div><span class="concept-kicker">Direction 02 · Atmosphere</span><h1>Aurora Vault</h1></div>
+          <p>A premium, atmospheric direction with aurora gradients, translucent surfaces and softer geometry—space-inspired without feeling like a literal control panel.</p>
+        </div>
+        <div class="mockup aurora">
+          <aside class="mock-sidebar">
+            <div class="mock-brand"><span class="mock-brand-logo"><svg class="icon"><use href="#i-lock"/></svg></span><span class="mock-brand-name">Nebula <strong>Secrets</strong></span></div>
+            <nav class="mock-nav">
+              <span class="mock-nav-label">Workspace</span>
+              <button class="active"><svg class="icon"><use href="#i-grid"/></svg><span>Vault</span></button>
+              <button><svg class="icon"><use href="#i-laptop"/></svg><span>Devices</span></button>
+              <button><svg class="icon"><use href="#i-users"/></svg><span>Admin</span></button>
+              <div class="nav-spacer"></div><span class="mock-nav-label">System</span>
+              <button><svg class="icon"><use href="#i-settings"/></svg><span>Authentication</span></button>
+              <button><svg class="icon"><use href="#i-clock"/></svg><span>Audit log</span></button>
+            </nav>
+            <div class="mock-security"><svg class="icon"><use href="#i-shield"/></svg><div><strong>Client encrypted</strong><span>Convex stores ciphertext</span></div></div>
+          </aside>
+          <section class="mock-main">
+            <header class="mock-topbar">
+              <div class="top-title"><small>Personal workspace</small><strong>Secrets vault</strong></div>
+              <div class="top-actions"><span class="sync-chip"><i class="sync-dot"></i> Vault protected</span><span class="avatar">NB</span><span class="user-meta"><strong>Nebula Admin</strong><span>System Administrator</span></span><button class="icon-button"><svg class="icon sm"><use href="#i-settings"/></svg></button></div>
+            </header>
+            <div class="mock-content">
+              <div class="env-row">
+                <div class="env-tabs"><button class="active">Local</button><button>Development</button><button>UAT</button><button>Production <svg class="icon sm"><use href="#i-lock"/></svg></button></div>
+                <span class="env-health"><i class="sync-dot"></i><strong>End-to-end encrypted</strong></span>
+              </div>
+              <div class="page-head">
+                <div><span class="eyebrow"><svg class="icon sm"><use href="#i-orbit"/></svg> Local constellation</span><h2>Your private secrets</h2><p>Only this verified device can decrypt these values.</p></div>
+                <div class="head-buttons"><button class="action-button"><svg class="icon sm"><use href="#i-folder"/></svg> Manage projects</button><button class="action-button primary"><svg class="icon sm"><use href="#i-plus"/></svg> Add secret</button></div>
+              </div>
+              <div class="toolbar"><label class="search"><svg class="icon sm"><use href="#i-search"/></svg><input placeholder="Search your vault…" /></label><div class="select-box"><span>Project</span><strong>All projects⌄</strong></div><span class="result-count">5 secrets</span></div>
+              <div class="project-stack">
+                <article class="project-card">
+                  <header><span class="project-name"><svg class="icon sm"><use href="#i-folder"/></svg> Core platform</span><small>3 secrets</small></header>
+                  <div class="secret-list">
+                    <div class="secret-row"><span class="secret-icon"><svg class="icon"><use href="#i-key"/></svg></span><span class="secret-name"><strong>Convex deploy key</strong><small>API Key · infrastructure</small></span><span class="secret-version"><span>Last updated</span><strong>2 days ago · v4</strong></span><span class="status">Encrypted</span><span class="row-action"><svg class="icon sm"><use href="#i-copy"/></svg></span></div>
+                    <div class="secret-row"><span class="secret-icon"><svg class="icon"><use href="#i-lock"/></svg></span><span class="secret-name"><strong>WorkOS client credentials</strong><small>Login · identity</small></span><span class="secret-version"><span>Last updated</span><strong>18 days ago · v2</strong></span><span class="status">Encrypted</span><span class="row-action"><svg class="icon sm"><use href="#i-chev"/></svg></span></div>
+                    <div class="secret-row"><span class="secret-icon"><svg class="icon"><use href="#i-key"/></svg></span><span class="secret-name"><strong>Resend production API</strong><small>API Key · messaging</small></span><span class="secret-version"><span>Last updated</span><strong>1 month ago · v7</strong></span><span class="status">Encrypted</span><span class="row-action"><svg class="icon sm"><use href="#i-copy"/></svg></span></div>
+                  </div>
+                </article>
+                <article class="project-card">
+                  <header><span class="project-name"><svg class="icon sm"><use href="#i-folder"/></svg> Observability</span><small>2 secrets</small></header>
+                  <div class="secret-list">
+                    <div class="secret-row"><span class="secret-icon"><svg class="icon"><use href="#i-key"/></svg></span><span class="secret-name"><strong>Sentry ingest token</strong><small>API Key · monitoring</small></span><span class="secret-version"><span>Last updated</span><strong>6 days ago · v3</strong></span><span class="status">Encrypted</span><span class="row-action"><svg class="icon sm"><use href="#i-copy"/></svg></span></div>
+                    <div class="secret-row"><span class="secret-icon"><svg class="icon"><use href="#i-lock"/></svg></span><span class="secret-name"><strong>Grafana service account</strong><small>Login · analytics</small></span><span class="secret-version"><span>Last updated</span><strong>3 months ago · v1</strong></span><span class="status">Encrypted</span><span class="row-action"><svg class="icon sm"><use href="#i-chev"/></svg></span></div>
+                  </div>
+                </article>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="concept concept-c">
+        <div class="concept-meta">
+          <div><span class="concept-kicker">Direction 03 · Clarity</span><h1>Lunar Archive</h1></div>
+          <p>A restrained light-mode concept inspired by moon-base interiors: mineral whites, structural charcoal and a warm signal-orange accent for a calm working surface.</p>
+        </div>
+        <div class="mockup lunar">
+          <aside class="mock-sidebar">
+            <div class="mock-brand"><span class="mock-brand-logo"><svg class="icon"><use href="#i-lock"/></svg></span><span class="mock-brand-name">Nebula <strong>Secrets</strong></span></div>
+            <nav class="mock-nav">
+              <span class="mock-nav-label">Workspace</span>
+              <button class="active"><svg class="icon"><use href="#i-grid"/></svg><span>Vault</span></button>
+              <button><svg class="icon"><use href="#i-laptop"/></svg><span>Devices</span></button>
+              <button><svg class="icon"><use href="#i-users"/></svg><span>Admin</span></button>
+              <div class="nav-spacer"></div><span class="mock-nav-label">System</span>
+              <button><svg class="icon"><use href="#i-settings"/></svg><span>Authentication</span></button>
+              <button><svg class="icon"><use href="#i-clock"/></svg><span>Audit log</span></button>
+            </nav>
+            <div class="mock-security"><svg class="icon"><use href="#i-shield"/></svg><div><strong>Client encrypted</strong><span>Ciphertext-only backend</span></div></div>
+          </aside>
+          <section class="mock-main">
+            <header class="mock-topbar">
+              <div class="top-title"><small>Nebula workspace / 01</small><strong>Secrets vault</strong></div>
+              <div class="top-actions"><span class="sync-chip"><i class="sync-dot"></i> Device verified</span><span class="avatar">NB</span><span class="user-meta"><strong>Nebula Admin</strong><span>System Administrator</span></span><button class="icon-button"><svg class="icon sm"><use href="#i-settings"/></svg></button></div>
+            </header>
+            <div class="mock-content">
+              <div class="env-row">
+                <div class="env-tabs"><button class="active">Local</button><button>Development</button><button>UAT</button><button>Production <svg class="icon sm"><use href="#i-lock"/></svg></button></div>
+                <span class="env-health"><i class="sync-dot"></i><strong>Secure connection</strong> · London, UK</span>
+              </div>
+              <div class="page-head">
+                <div><span class="eyebrow"><svg class="icon sm"><use href="#i-orbit"/></svg> Archive / Local</span><h2>Local secrets</h2><p>Private values encrypted for this development identity.</p></div>
+                <div class="head-buttons"><button class="action-button"><svg class="icon sm"><use href="#i-folder"/></svg> Projects</button><button class="action-button primary"><svg class="icon sm"><use href="#i-plus"/></svg> New secret</button></div>
+              </div>
+              <div class="toolbar"><label class="search"><svg class="icon sm"><use href="#i-search"/></svg><input placeholder="Search secrets…" /></label><div class="select-box"><span>Project</span><strong>All projects⌄</strong></div><span class="result-count">5 secrets</span></div>
+              <div class="project-stack">
+                <article class="project-card">
+                  <header><span class="project-name"><svg class="icon sm"><use href="#i-folder"/></svg> Core platform</span><small>3 secrets</small></header>
+                  <div class="secret-list">
+                    <div class="secret-row"><span class="secret-icon"><svg class="icon"><use href="#i-key"/></svg></span><span class="secret-name"><strong>Convex deploy key</strong><small>API Key · infrastructure</small></span><span class="secret-version"><span>Last updated</span><strong>2 days ago · v4</strong></span><span class="status">Encrypted</span><span class="row-action"><svg class="icon sm"><use href="#i-copy"/></svg></span></div>
+                    <div class="secret-row"><span class="secret-icon"><svg class="icon"><use href="#i-lock"/></svg></span><span class="secret-name"><strong>WorkOS client credentials</strong><small>Login · identity</small></span><span class="secret-version"><span>Last updated</span><strong>18 days ago · v2</strong></span><span class="status">Encrypted</span><span class="row-action"><svg class="icon sm"><use href="#i-chev"/></svg></span></div>
+                    <div class="secret-row"><span class="secret-icon"><svg class="icon"><use href="#i-key"/></svg></span><span class="secret-name"><strong>Resend production API</strong><small>API Key · messaging</small></span><span class="secret-version"><span>Last updated</span><strong>1 month ago · v7</strong></span><span class="status">Encrypted</span><span class="row-action"><svg class="icon sm"><use href="#i-copy"/></svg></span></div>
+                  </div>
+                </article>
+                <article class="project-card">
+                  <header><span class="project-name"><svg class="icon sm"><use href="#i-folder"/></svg> Observability</span><small>2 secrets</small></header>
+                  <div class="secret-list">
+                    <div class="secret-row"><span class="secret-icon"><svg class="icon"><use href="#i-key"/></svg></span><span class="secret-name"><strong>Sentry ingest token</strong><small>API Key · monitoring</small></span><span class="secret-version"><span>Last updated</span><strong>6 days ago · v3</strong></span><span class="status">Encrypted</span><span class="row-action"><svg class="icon sm"><use href="#i-copy"/></svg></span></div>
+                    <div class="secret-row"><span class="secret-icon"><svg class="icon"><use href="#i-lock"/></svg></span><span class="secret-name"><strong>Grafana service account</strong><small>Login · analytics</small></span><span class="secret-version"><span>Last updated</span><strong>3 months ago · v1</strong></span><span class="status">Encrypted</span><span class="row-action"><svg class="icon sm"><use href="#i-chev"/></svg></span></div>
+                  </div>
+                </article>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

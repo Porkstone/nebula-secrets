@@ -32,10 +32,12 @@ import {
   Shield,
   ShieldAlert,
   ShieldCheck,
+  Sun,
   Settings,
   Trash2,
   UserPlus,
   Users,
+  Moon,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -196,6 +198,44 @@ function LoadingScreen() {
   );
 }
 
+export function ParticleField() {
+  return (
+    <div className="particle-field" aria-hidden="true">
+      <span />
+      <span />
+      <span />
+    </div>
+  );
+}
+
+export function ThemeToggle() {
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    const storedTheme = window.localStorage.getItem("nebula-theme");
+    return storedTheme === "light" || storedTheme === "dark"
+      ? storedTheme
+      : "dark";
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem("nebula-theme", theme);
+  }, [theme]);
+
+  const nextTheme = theme === "dark" ? "light" : "dark";
+
+  return (
+    <button
+      className="icon-button theme-toggle"
+      type="button"
+      aria-label={`Switch to ${nextTheme} mode`}
+      title={`Switch to ${nextTheme} mode`}
+      onClick={() => setTheme(nextTheme)}
+    >
+      {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+    </button>
+  );
+}
+
 function ErrorNotice({ message }: { message: string }) {
   return (
     <div className="notice error">
@@ -232,6 +272,8 @@ export default function App() {
   if (isLoading) return <LoadingScreen />;
   return (
     <>
+      <ParticleField />
+      <ThemeToggle />
       <AuthLoading>
         <LoadingScreen />
       </AuthLoading>
@@ -1105,7 +1147,7 @@ function Dashboard({
             <span className="avatar">
               {user.displayName.slice(0, 2).toUpperCase()}
             </span>
-            <span>
+            <span className="signed-in-user-meta">
               <strong>{user.displayName}</strong>
               <small>
                 {user.role === "systemAdministrator"
