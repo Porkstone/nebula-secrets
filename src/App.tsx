@@ -1387,6 +1387,9 @@ function Vault({
     projects.some((project) => project._id === projectFilter)
       ? projectFilter
       : "all";
+  const selectedFilterProjectId = projects?.find(
+    (project) => project._id === effectiveProjectFilter,
+  )?._id;
 
   useEffect(() => {
     if (projects && effectiveProjectFilter !== projectFilter) {
@@ -1701,6 +1704,9 @@ function Vault({
           environmentKey={environmentKey}
           row={editorRow === "new" ? null : editorRow}
           projects={projects ?? []}
+          initialProjectId={
+            editorRow === "new" ? selectedFilterProjectId : undefined
+          }
           decrypted={
             editorRow === "new"
               ? null
@@ -1937,6 +1943,7 @@ function SecretEditor({
   environmentKey,
   row,
   projects,
+  initialProjectId,
   decrypted,
   onClose,
   onSaved,
@@ -1946,6 +1953,7 @@ function SecretEditor({
   environmentKey: CryptoKey;
   row: SecretRow | null;
   projects: Doc<"projects">[];
+  initialProjectId?: Id<"projects">;
   decrypted: SecretPayload | null;
   onClose: () => void;
   onSaved: () => void;
@@ -1955,6 +1963,7 @@ function SecretEditor({
   const [type, setType] = useState<SecretType>(row?.definition.type ?? "login");
   const [projectId, setProjectId] = useState<Id<"projects"> | "">(
     row?.definition.projectId ??
+      initialProjectId ??
       projects.find((project) => project.normalizedName === "general")?._id ??
       projects[0]?._id ??
       "",
