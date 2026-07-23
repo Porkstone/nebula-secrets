@@ -2160,67 +2160,67 @@ body {
 }
 
 .workspace-main[data-environment="local"] {
-  --brand: #a38ac7;
-  --brand-dark: #c9b6e3;
-  --brand-soft: rgba(138, 111, 179, 0.16);
-  --brand-faint: rgba(138, 111, 179, 0.08);
-  --brand-ring: rgba(163, 138, 199, 0.18);
-  --environment-border: rgba(163, 138, 199, 0.46);
+  --brand: #aa78d7;
+  --brand-dark: #d5b4f2;
+  --brand-soft: rgba(154, 91, 205, 0.17);
+  --brand-faint: rgba(154, 91, 205, 0.085);
+  --brand-ring: rgba(170, 120, 215, 0.2);
+  --environment-border: rgba(170, 120, 215, 0.5);
 }
 
 .workspace-main[data-environment="development"] {
-  --brand: #72ad83;
-  --brand-dark: #9ccaaa;
-  --brand-soft: rgba(91, 158, 111, 0.15);
-  --brand-faint: rgba(91, 158, 111, 0.075);
-  --brand-ring: rgba(114, 173, 131, 0.18);
-  --environment-border: rgba(114, 173, 131, 0.46);
+  --brand: #55b878;
+  --brand-dark: #8fd5a7;
+  --brand-soft: rgba(61, 172, 96, 0.16);
+  --brand-faint: rgba(61, 172, 96, 0.08);
+  --brand-ring: rgba(85, 184, 120, 0.2);
+  --environment-border: rgba(85, 184, 120, 0.5);
 }
 
 .workspace-main[data-environment="uat"] {
-  --brand: #bd8b62;
-  --brand-dark: #dab28e;
-  --brand-soft: rgba(183, 126, 80, 0.15);
-  --brand-faint: rgba(183, 126, 80, 0.075);
-  --brand-ring: rgba(189, 139, 98, 0.18);
-  --environment-border: rgba(189, 139, 98, 0.48);
+  --brand: #cf8248;
+  --brand-dark: #efae78;
+  --brand-soft: rgba(203, 104, 43, 0.16);
+  --brand-faint: rgba(203, 104, 43, 0.08);
+  --brand-ring: rgba(207, 130, 72, 0.2);
+  --environment-border: rgba(207, 130, 72, 0.52);
 }
 
 .workspace-main[data-environment="production"] {
-  --brand: #c2767c;
-  --brand-dark: #dfa4a9;
-  --brand-soft: rgba(181, 85, 94, 0.15);
-  --brand-faint: rgba(181, 85, 94, 0.075);
-  --brand-ring: rgba(194, 118, 124, 0.18);
-  --environment-border: rgba(194, 118, 124, 0.48);
+  --brand: #d06370;
+  --brand-dark: #ed9da5;
+  --brand-soft: rgba(203, 62, 78, 0.16);
+  --brand-faint: rgba(203, 62, 78, 0.08);
+  --brand-ring: rgba(208, 99, 112, 0.2);
+  --environment-border: rgba(208, 99, 112, 0.52);
 }
 
 :root[data-theme="light"] .workspace-main[data-environment="local"] {
-  --brand: #715695;
-  --brand-dark: #533b74;
-  --brand-soft: rgba(113, 86, 149, 0.12);
-  --brand-faint: rgba(113, 86, 149, 0.065);
+  --brand: #7440a5;
+  --brand-dark: #55277d;
+  --brand-soft: rgba(116, 64, 165, 0.13);
+  --brand-faint: rgba(116, 64, 165, 0.07);
 }
 
 :root[data-theme="light"] .workspace-main[data-environment="development"] {
-  --brand: #477c58;
-  --brand-dark: #315e40;
-  --brand-soft: rgba(71, 124, 88, 0.12);
-  --brand-faint: rgba(71, 124, 88, 0.065);
+  --brand: #287b45;
+  --brand-dark: #165e31;
+  --brand-soft: rgba(40, 123, 69, 0.13);
+  --brand-faint: rgba(40, 123, 69, 0.07);
 }
 
 :root[data-theme="light"] .workspace-main[data-environment="uat"] {
-  --brand: #95623e;
-  --brand-dark: #73472a;
-  --brand-soft: rgba(149, 98, 62, 0.12);
-  --brand-faint: rgba(149, 98, 62, 0.065);
+  --brand: #a85321;
+  --brand-dark: #7b340f;
+  --brand-soft: rgba(168, 83, 33, 0.13);
+  --brand-faint: rgba(168, 83, 33, 0.07);
 }
 
 :root[data-theme="light"] .workspace-main[data-environment="production"] {
-  --brand: #9d4f58;
-  --brand-dark: #79353d;
-  --brand-soft: rgba(157, 79, 88, 0.12);
-  --brand-faint: rgba(157, 79, 88, 0.065);
+  --brand: #a83746;
+  --brand-dark: #812331;
+  --brand-soft: rgba(168, 55, 70, 0.13);
+  --brand-faint: rgba(168, 55, 70, 0.07);
 }
 
 .environment-tabs {
