@@ -198,6 +198,14 @@ export default defineSchema({
   secretValueVersions: defineTable({
     secretValueId: v.id("secretValues"),
     payload: encryptedPayload,
+    secretType: v.optional(
+      v.union(
+        v.literal("login"),
+        v.literal("apiKey"),
+        v.literal("introducerApiKey"),
+        v.literal("licenseKey"),
+      ),
+    ),
     version: v.number(),
     changedBy: v.id("users"),
     changedAt: v.number(),

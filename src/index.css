@@ -1117,6 +1117,16 @@ textarea:focus {
   color: var(--danger);
   font-size: 0.68rem;
 }
+.field-hint {
+  color: var(--ink-faint);
+  font-size: 0.66rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.conversion-note {
+  background: #edf0f8;
+  color: #3f5186;
+}
 .project-list {
   display: grid;
   border: 1px solid var(--line);

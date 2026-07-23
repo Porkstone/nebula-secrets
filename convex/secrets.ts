@@ -55,6 +55,11 @@ export const save = mutation({
     payload: encryptedPayloadValidator,
     expectedVersion: v.optional(v.number()),
   },
+  returns: v.object({
+    secretId: v.id("secretDefinitions"),
+    valueId: v.id("secretValues"),
+    version: v.number(),
+  }),
   handler: async (ctx, args) => {
     const actor = await requireEnvironmentAccess(ctx, args.environment);
     const projectId =
@@ -65,8 +70,10 @@ export const save = mutation({
     if (!projectAllowsSecretType(project, args.type)) {
       throw new Error("This project does not allow the selected secret type.");
     }
+    const owner = ownerForEnvironment(args.environment, actor._id);
     const now = Date.now();
     let secretId = args.secretId;
+    let convertedFromApiKey = false;
     if (secretId) {
       const definition = await ctx.db.get("secretDefinitions", secretId);
       if (!definition || definition.status !== "active") {
@@ -74,6 +81,38 @@ export const save = mutation({
       }
       if (definition.cryptoId !== args.cryptoId)
         throw new Error("Secret identity mismatch.");
+      if (definition.type !== args.type) {
+        if (definition.type !== "apiKey" || args.type !== "introducerApiKey") {
+          throw new Error(
+            "Only API Key secrets can be converted to Introducer API Key.",
+          );
+        }
+        const storedValues = await ctx.db
+          .query("secretValues")
+          .withIndex("by_secretId", (q) => q.eq("secretId", definition._id))
+          .take(2);
+        const currentStoredValue = storedValues.find(
+          (value) =>
+            value.environment === args.environment &&
+            value.ownerUserId === owner,
+        );
+        if (
+          storedValues.some((value) => value._id !== currentStoredValue?._id)
+        ) {
+          throw new Error(
+            "Conversion is only available when this is the secret's only stored value.",
+          );
+        }
+        if (
+          currentStoredValue &&
+          args.expectedVersion !== currentStoredValue.version
+        ) {
+          throw new Error(
+            "This secret changed in another session. Refresh and try again.",
+          );
+        }
+        convertedFromApiKey = true;
+      }
       await ctx.db.patch("secretDefinitions", secretId, {
         name: args.name.trim(),
         type: args.type,
@@ -101,7 +140,6 @@ export const save = mutation({
       });
     }
 
-    const owner = ownerForEnvironment(args.environment, actor._id);
     const existing = await ctx.db
       .query("secretValues")
       .withIndex("by_secretId_and_environment_and_ownerUserId", (q) =>
@@ -124,6 +162,7 @@ export const save = mutation({
       await ctx.db.insert("secretValueVersions", {
         secretValueId: existing._id,
         payload: existing.payload,
+        secretType: convertedFromApiKey ? "apiKey" : args.type,
         version: existing.version,
         changedBy: existing.updatedBy,
         changedAt: existing.updatedAt,
@@ -148,11 +187,15 @@ export const save = mutation({
     }
     await appendAudit(ctx, {
       actorUserId: actor._id,
-      action: existing ? "secret.updated" : "secret.valueCreated",
+      action: convertedFromApiKey
+        ? "secret.typeConverted"
+        : existing
+          ? "secret.updated"
+          : "secret.valueCreated",
       targetType: "secret",
       targetId: secretId,
       environment: args.environment,
-      context: args.type,
+      context: convertedFromApiKey ? "apiKey->introducerApiKey" : args.type,
     });
     return { secretId, valueId, version: existing ? existing.version + 1 : 1 };
   },
@@ -199,6 +242,16 @@ export const listVersions = query({
   args: {
     secretValueId: v.id("secretValues"),
   },
+  returns: v.array(
+    v.object({
+      payload: encryptedPayloadValidator,
+      secretType: secretTypeValidator,
+      version: v.number(),
+      changedBy: v.id("users"),
+      changedAt: v.number(),
+      current: v.boolean(),
+    }),
+  ),
   handler: async (ctx, args) => {
     const value = await ctx.db.get("secretValues", args.secretValueId);
     if (!value) throw new Error("Secret value not found.");
@@ -206,6 +259,8 @@ export const listVersions = query({
     if (value.environment === "local" && value.ownerUserId !== actor._id) {
       throw new Error("Local values are private to their owner.");
     }
+    const definition = await ctx.db.get("secretDefinitions", value.secretId);
+    if (!definition) throw new Error("Secret definition not found.");
     const history = await ctx.db
       .query("secretValueVersions")
       .withIndex("by_secretValueId_and_version", (q) =>
@@ -216,12 +271,22 @@ export const listVersions = query({
     return [
       {
         payload: value.payload,
+        secretType: definition.type,
         version: value.version,
         changedBy: value.updatedBy,
         changedAt: value.updatedAt,
         current: true,
       },
-      ...history.map((item) => ({ ...item, current: false })),
+      ...history.map((item) => ({
+        payload: item.payload,
+        secretType:
+          item.secretType ??
+          (definition.type === "introducerApiKey" ? "apiKey" : definition.type),
+        version: item.version,
+        changedBy: item.changedBy,
+        changedAt: item.changedAt,
+        current: false,
+      })),
     ];
   },
 });

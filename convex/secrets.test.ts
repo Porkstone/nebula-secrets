@@ -333,6 +333,87 @@ describe("authenticated secrets access model", () => {
     ).rejects.toThrow("does not allow this secret type");
   });
 
+  test("converts an API Key to an Introducer API Key as a one-way transition", async () => {
+    const { admin } = await initializedVault();
+    const saved = await admin.mutation(api.secrets.save, {
+      environment: "local",
+      cryptoId: "convertible-api-key",
+      name: "Convertible API",
+      type: "apiKey",
+      payload: encryptedPayload,
+    });
+
+    const converted = await admin.mutation(api.secrets.save, {
+      environment: "local",
+      secretId: saved.secretId,
+      cryptoId: "convertible-api-key",
+      name: "Convertible API",
+      type: "introducerApiKey",
+      payload: encryptedPayload,
+      expectedVersion: 1,
+    });
+    expect(converted.version).toBe(2);
+    expect(
+      (await admin.query(api.secrets.list, { environment: "local" })).find(
+        (row) => row.definition._id === saved.secretId,
+      )?.definition.type,
+    ).toBe("introducerApiKey");
+    expect(
+      (
+        await admin.query(api.secrets.listVersions, {
+          secretValueId: converted.valueId,
+        })
+      ).find((version) => !version.current)?.secretType,
+    ).toBe("apiKey");
+
+    await expect(
+      admin.mutation(api.secrets.save, {
+        environment: "local",
+        secretId: saved.secretId,
+        cryptoId: "convertible-api-key",
+        name: "Convertible API",
+        type: "apiKey",
+        payload: encryptedPayload,
+        expectedVersion: 2,
+      }),
+    ).rejects.toThrow(
+      "Only API Key secrets can be converted to Introducer API Key",
+    );
+  });
+
+  test("blocks conversion when another environment value would be invalidated", async () => {
+    const { admin } = await initializedVault();
+    const saved = await admin.mutation(api.secrets.save, {
+      environment: "local",
+      cryptoId: "multi-environment-api-key",
+      name: "Multi-environment API",
+      type: "apiKey",
+      payload: encryptedPayload,
+    });
+    await admin.mutation(api.secrets.save, {
+      environment: "development",
+      secretId: saved.secretId,
+      cryptoId: "multi-environment-api-key",
+      name: "Multi-environment API",
+      type: "apiKey",
+      payload: encryptedPayload,
+    });
+
+    await expect(
+      admin.mutation(api.secrets.save, {
+        environment: "local",
+        secretId: saved.secretId,
+        cryptoId: "multi-environment-api-key",
+        name: "Multi-environment API",
+        type: "introducerApiKey",
+        payload: encryptedPayload,
+        expectedVersion: 1,
+      }),
+    ).rejects.toThrow(
+      "only available when this is the secret's only stored value",
+    );
+  });
+
   test("approves and revokes a second browser with signed device envelopes", async () => {
     const t = convexTest(schema, modules);
     const admin = authenticated(t, "device_admin", "devices@example.test");

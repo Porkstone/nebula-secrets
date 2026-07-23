@@ -1853,14 +1853,45 @@ function SecretEditor({
   const selectedProjectAllowedTypes = selectedProject
     ? allowedSecretTypesForProject(selectedProject)
     : secretTypes;
-  const title = row?.value
-    ? "Edit secret value"
-    : row
-      ? `Set ${environmentLabels[environment]} value`
-      : "Create secret";
+  const availableSecretTypes: SecretType[] = row
+    ? row.definition.type === "apiKey"
+      ? ["apiKey", "introducerApiKey"]
+      : [row.definition.type]
+    : secretTypes;
+  const isConverting =
+    row?.definition.type === "apiKey" && type === "introducerApiKey";
+  const canConvertInSelectedProject =
+    selectedProjectAllowedTypes.includes("introducerApiKey");
+  const title = isConverting
+    ? "Convert API Key"
+    : row?.value
+      ? "Edit secret value"
+      : row
+        ? `Set ${environmentLabels[environment]} value`
+        : "Create secret";
 
   function field(name: keyof SecretPayload, value: string) {
     setPayload((current) => ({ ...current, [name]: value }));
+  }
+
+  function changeType(nextType: SecretType) {
+    setType(nextType);
+    setPayload((current) => {
+      if (row?.definition.type === "apiKey") {
+        return {
+          notes: current.notes,
+          apiKey: current.apiKey,
+          endpoint: current.endpoint,
+          ...(nextType === "introducerApiKey"
+            ? {
+                introducerCode: current.introducerCode,
+                webserviceLogin: current.webserviceLogin,
+              }
+            : {}),
+        };
+      }
+      return { notes: current.notes };
+    });
   }
 
   async function submit(event: React.FormEvent) {
@@ -1922,13 +1953,12 @@ function SecretEditor({
             Secret type
             <select
               value={type}
-              disabled={Boolean(row)}
+              disabled={Boolean(row && row.definition.type !== "apiKey")}
               onChange={(event) => {
-                setType(event.target.value as SecretType);
-                setPayload({ notes: payload.notes });
+                changeType(event.target.value as SecretType);
               }}
             >
-              {secretTypes.map((secretType) => (
+              {availableSecretTypes.map((secretType) => (
                 <option
                   key={secretType}
                   value={secretType}
@@ -1938,6 +1968,13 @@ function SecretEditor({
                 </option>
               ))}
             </select>
+            {row?.definition.type === "apiKey" && (
+              <small className="field-hint">
+                {canConvertInSelectedProject
+                  ? "Select Introducer API Key to convert this secret while keeping its API key, endpoint, and notes."
+                  : "This project must allow Introducer API Keys before this secret can be converted."}
+              </small>
+            )}
           </label>
           <label className="wide">
             Project
@@ -2046,6 +2083,15 @@ function SecretEditor({
                 placeholder="https://api.example.com"
               />
             </label>
+          </div>
+        )}
+        {isConverting && (
+          <div className="encryption-note conversion-note">
+            <Code2 size={17} />
+            <span>
+              Saving will convert this secret to Introducer API Key and create a
+              new encrypted version.
+            </span>
           </div>
         )}
         {type === "licenseKey" && (
