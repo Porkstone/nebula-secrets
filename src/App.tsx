@@ -133,11 +133,57 @@ const environmentLabels: Record<Environment, string> = {
   uat: "UAT",
   production: "Production",
 };
+const secretTypes: SecretType[] = [
+  "login",
+  "apiKey",
+  "introducerApiKey",
+  "licenseKey",
+];
 const secretTypeLabels: Record<SecretType, string> = {
   login: "Login",
   apiKey: "API Key",
+  introducerApiKey: "Introducer API Key",
   licenseKey: "License Key",
 };
+
+function allowedSecretTypesForProject(project: Doc<"projects">) {
+  return project.allowedSecretTypes ?? secretTypes;
+}
+
+function SecretTypeCheckboxes({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: SecretType[];
+  onChange: (value: SecretType[]) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="secret-type-checkboxes">
+      {secretTypes.map((secretType) => {
+        const checked = value.includes(secretType);
+        return (
+          <label key={secretType}>
+            <input
+              type="checkbox"
+              checked={checked}
+              disabled={disabled}
+              onChange={() =>
+                onChange(
+                  checked
+                    ? value.filter((item) => item !== secretType)
+                    : [...value, secretType],
+                )
+              }
+            />
+            <span>{secretTypeLabels[secretType]}</span>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
 
 function LoadingScreen() {
   return (
@@ -1302,7 +1348,13 @@ function Vault({
 
   async function copyApiKey(row: DecryptedSecretRow) {
     const apiKey = row.decrypted?.apiKey;
-    if (!row.value || row.definition.type !== "apiKey" || !apiKey) return;
+    if (
+      !row.value ||
+      (row.definition.type !== "apiKey" &&
+        row.definition.type !== "introducerApiKey") ||
+      !apiKey
+    )
+      return;
 
     try {
       await navigator.clipboard.writeText(apiKey);
@@ -1452,7 +1504,8 @@ function Vault({
                   <div className="secret-list">
                     {group.rows.map((row) => {
                       const canCopyApiKey =
-                        row.definition.type === "apiKey" &&
+                        (row.definition.type === "apiKey" ||
+                          row.definition.type === "introducerApiKey") &&
                         Boolean(row.value && row.decrypted?.apiKey);
 
                       return (
@@ -1587,12 +1640,15 @@ function ProjectManager({
   const archiveProject = useMutation(api.projects.archive);
   const [editingId, setEditingId] = useState<Id<"projects"> | null>(null);
   const [name, setName] = useState("");
+  const [allowedSecretTypes, setAllowedSecretTypes] =
+    useState<SecretType[]>(secretTypes);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   function resetForm() {
     setEditingId(null);
     setName("");
+    setAllowedSecretTypes(secretTypes);
     setError("");
   }
 
@@ -1604,7 +1660,10 @@ function ProjectManager({
       if (editingId) {
         await renameProject({ projectId: editingId, name });
       } else {
-        await createProject({ name });
+        if (allowedSecretTypes.length === 0) {
+          throw new Error("Select at least one allowed secret type.");
+        }
+        await createProject({ name, allowedSecretTypes });
       }
       resetForm();
     } catch (cause) {
@@ -1653,6 +1712,20 @@ function ProjectManager({
               placeholder="e.g. Customer portal"
             />
           </label>
+          {!editingId && (
+            <fieldset className="project-secret-types">
+              <legend>Allowed secret types</legend>
+              <SecretTypeCheckboxes
+                value={allowedSecretTypes}
+                onChange={setAllowedSecretTypes}
+                disabled={busy}
+              />
+              <small>
+                Secrets created in this project will be limited to the selected
+                types.
+              </small>
+            </fieldset>
+          )}
           <div className="project-form-actions">
             {editingId && (
               <button
@@ -1686,32 +1759,42 @@ function ProjectManager({
                   <Folder size={17} />
                 </span>
                 <strong>{project.name}</strong>
-                {project.normalizedName === "general" ? (
-                  <span className="status-chip muted-chip">Default</span>
-                ) : (
-                  <button
-                    className="icon-button"
-                    aria-label={`Rename ${project.name}`}
-                    onClick={() => {
-                      setEditingId(project._id);
-                      setName(project.name);
-                      setError("");
-                    }}
-                  >
-                    <Pencil size={16} />
-                  </button>
-                )}
-                {project.normalizedName === "general" ? (
-                  <span />
-                ) : (
-                  <button
-                    className="icon-button danger-button"
-                    aria-label={`Archive ${project.name}`}
-                    onClick={() => void archive(project)}
-                  >
-                    <Archive size={16} />
-                  </button>
-                )}
+                <span className="project-type-summary">
+                  {allowedSecretTypesForProject(project).length ===
+                  secretTypes.length
+                    ? "All types"
+                    : allowedSecretTypesForProject(project)
+                        .map((type) => secretTypeLabels[type])
+                        .join(", ")}
+                </span>
+                <span className="project-item-actions">
+                  {project.normalizedName === "general" ? (
+                    <span className="status-chip muted-chip">Default</span>
+                  ) : (
+                    <button
+                      className="icon-button"
+                      aria-label={`Rename ${project.name}`}
+                      onClick={() => {
+                        setEditingId(project._id);
+                        setName(project.name);
+                        setError("");
+                      }}
+                    >
+                      <Pencil size={16} />
+                    </button>
+                  )}
+                  {project.normalizedName === "general" ? (
+                    <span />
+                  ) : (
+                    <button
+                      className="icon-button danger-button"
+                      aria-label={`Archive ${project.name}`}
+                      onClick={() => void archive(project)}
+                    >
+                      <Archive size={16} />
+                    </button>
+                  )}
+                </span>
               </div>
             ))}
           </div>
@@ -1728,7 +1811,8 @@ function ProjectManager({
 
 function SecretIcon({ type }: { type: SecretType }) {
   if (type === "login") return <LogIn size={19} />;
-  if (type === "apiKey") return <Code2 size={19} />;
+  if (type === "apiKey" || type === "introducerApiKey")
+    return <Code2 size={19} />;
   return <BadgeCheck size={19} />;
 }
 
@@ -1765,6 +1849,10 @@ function SecretEditor({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const selectedProject = projects.find((project) => project._id === projectId);
+  const selectedProjectAllowedTypes = selectedProject
+    ? allowedSecretTypesForProject(selectedProject)
+    : secretTypes;
   const title = row?.value
     ? "Edit secret value"
     : row
@@ -1840,9 +1928,15 @@ function SecretEditor({
                 setPayload({ notes: payload.notes });
               }}
             >
-              <option value="login">Login</option>
-              <option value="apiKey">API Key</option>
-              <option value="licenseKey">License Key</option>
+              {secretTypes.map((secretType) => (
+                <option
+                  key={secretType}
+                  value={secretType}
+                  disabled={!selectedProjectAllowedTypes.includes(secretType)}
+                >
+                  {secretTypeLabels[secretType]}
+                </option>
+              ))}
             </select>
           </label>
           <label className="wide">
@@ -1855,11 +1949,22 @@ function SecretEditor({
               }
             >
               {projects.map((project) => (
-                <option key={project._id} value={project._id}>
+                <option
+                  key={project._id}
+                  value={project._id}
+                  disabled={
+                    !allowedSecretTypesForProject(project).includes(type)
+                  }
+                >
                   {project.name}
                 </option>
               ))}
             </select>
+            {selectedProject && !selectedProjectAllowedTypes.includes(type) && (
+              <small className="field-warning">
+                This project does not allow {secretTypeLabels[type]} secrets.
+              </small>
+            )}
           </label>
         </div>
         {type === "login" && (
@@ -1893,8 +1998,36 @@ function SecretEditor({
             </label>
           </div>
         )}
-        {type === "apiKey" && (
+        {(type === "apiKey" || type === "introducerApiKey") && (
           <div className="form-grid two">
+            {type === "introducerApiKey" && (
+              <>
+                <label>
+                  Introducer code
+                  <input
+                    required
+                    value={payload.introducerCode ?? ""}
+                    onChange={(event) =>
+                      field("introducerCode", event.target.value)
+                    }
+                    placeholder="ABC001"
+                    autoComplete="off"
+                  />
+                </label>
+                <label>
+                  Webservice login
+                  <input
+                    required
+                    value={payload.webserviceLogin ?? ""}
+                    onChange={(event) =>
+                      field("webserviceLogin", event.target.value)
+                    }
+                    placeholder="abcWebService"
+                    autoComplete="off"
+                  />
+                </label>
+              </>
+            )}
             <label className="wide">
               API key or token
               <input
@@ -2000,31 +2133,52 @@ function SecretDetail({
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState("");
   const payload = row.decrypted;
-  const sensitiveFields =
-    row.definition.type === "login"
-      ? [
-          { label: "Username", value: payload?.username ?? "" },
-          {
-            label: "Password",
-            value: payload?.password ?? "",
-            sensitive: true,
-          },
-          { label: "Sign-in URL", value: payload?.url ?? "" },
-        ]
-      : row.definition.type === "apiKey"
+  let sensitiveFields: Array<{
+    label: string;
+    value: string;
+    sensitive?: boolean;
+  }>;
+  if (row.definition.type === "login") {
+    sensitiveFields = [
+      { label: "Username", value: payload?.username ?? "" },
+      {
+        label: "Password",
+        value: payload?.password ?? "",
+        sensitive: true,
+      },
+      { label: "Sign-in URL", value: payload?.url ?? "" },
+    ];
+  } else if (
+    row.definition.type === "apiKey" ||
+    row.definition.type === "introducerApiKey"
+  ) {
+    sensitiveFields = [
+      ...(row.definition.type === "introducerApiKey"
         ? [
-            { label: "API key", value: payload?.apiKey ?? "", sensitive: true },
-            { label: "Endpoint", value: payload?.endpoint ?? "" },
-          ]
-        : [
             {
-              label: "License key",
-              value: payload?.licenseKey ?? "",
-              sensitive: true,
+              label: "Introducer code",
+              value: payload?.introducerCode ?? "",
             },
-            { label: "Licensee", value: payload?.licensee ?? "" },
-            { label: "Expires", value: payload?.expiresAt ?? "" },
-          ];
+            {
+              label: "Webservice login",
+              value: payload?.webserviceLogin ?? "",
+            },
+          ]
+        : []),
+      { label: "API key", value: payload?.apiKey ?? "", sensitive: true },
+      { label: "Endpoint", value: payload?.endpoint ?? "" },
+    ];
+  } else {
+    sensitiveFields = [
+      {
+        label: "License key",
+        value: payload?.licenseKey ?? "",
+        sensitive: true,
+      },
+      { label: "Licensee", value: payload?.licensee ?? "" },
+      { label: "Expires", value: payload?.expiresAt ?? "" },
+    ];
+  }
 
   async function copy(label: string, value: string) {
     await navigator.clipboard.writeText(value);
@@ -3010,9 +3164,11 @@ function AdminArea({
 }) {
   const convex = useConvex();
   const users = useQuery(api.users.listForAdmin, {});
+  const projects = useQuery(api.projects.list, {});
   const createUser = useMutation(api.users.create);
   const updateUser = useMutation(api.users.update);
   const setGrant = useMutation(api.access.setGrant);
+  const setProjectSecretTypes = useMutation(api.projects.setAllowedSecretTypes);
   const [showCreate, setShowCreate] = useState(false);
   const [busyTarget, setBusyTarget] = useState("");
   const [error, setError] = useState("");
@@ -3069,6 +3225,30 @@ function AdminArea({
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Access update failed.",
+      );
+    } finally {
+      setBusyTarget("");
+    }
+  }
+
+  async function changeProjectSecretTypes(
+    project: Doc<"projects">,
+    allowedSecretTypes: SecretType[],
+  ) {
+    if (allowedSecretTypes.length === 0) {
+      setError("Each project must allow at least one secret type.");
+      return;
+    }
+    setBusyTarget(`project-${project._id}`);
+    setError("");
+    try {
+      await setProjectSecretTypes({
+        projectId: project._id,
+        allowedSecretTypes,
+      });
+    } catch (cause) {
+      setError(
+        errorMessage(cause, "Unable to update the project's secret types."),
       );
     } finally {
       setBusyTarget("");
@@ -3221,6 +3401,57 @@ function AdminArea({
           </table>
         </div>
       )}
+      <section className="project-restrictions-section">
+        <div className="section-title-row">
+          <div>
+            <span className="eyebrow">Project policy</span>
+            <h2>Allowed secret types</h2>
+            <p>
+              Restrict each project to the kinds of secrets it is intended to
+              contain.
+            </p>
+          </div>
+        </div>
+        {!projects ? (
+          <LoadingPanel />
+        ) : (
+          <div className="project-restriction-list">
+            {projects
+              .slice()
+              .sort((left, right) => left.name.localeCompare(right.name))
+              .map((project) => (
+                <div className="project-restriction-row" key={project._id}>
+                  <div className="project-restriction-name">
+                    <span className="project-icon">
+                      <Folder size={17} />
+                    </span>
+                    <span>
+                      <strong>{project.name}</strong>
+                      <small>
+                        {project.normalizedName === "general"
+                          ? "Default project"
+                          : "Active project"}
+                      </small>
+                    </span>
+                  </div>
+                  <SecretTypeCheckboxes
+                    value={allowedSecretTypesForProject(project)}
+                    disabled={busyTarget === `project-${project._id}`}
+                    onChange={(allowedSecretTypes) =>
+                      void changeProjectSecretTypes(project, allowedSecretTypes)
+                    }
+                  />
+                  {busyTarget === `project-${project._id}` && (
+                    <LoaderCircle
+                      className="spin project-restriction-spinner"
+                      size={16}
+                    />
+                  )}
+                </div>
+              ))}
+          </div>
+        )}
+      </section>
       <div className="panel admin-note authenticated-note">
         <ShieldCheck size={20} />
         <div>

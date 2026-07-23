@@ -269,6 +269,70 @@ describe("authenticated secrets access model", () => {
     ).resolves.toBeNull();
   });
 
+  test("supports Introducer API Keys and enforces project secret type restrictions", async () => {
+    const { t, admin } = await initializedVault();
+    const { developer } = await inviteAndLinkDeveloper(t, admin);
+    const projectId = await admin.mutation(api.projects.create, {
+      name: "Introducer integrations",
+      allowedSecretTypes: ["introducerApiKey"],
+    });
+
+    await expect(
+      admin.mutation(api.secrets.save, {
+        environment: "local",
+        projectId,
+        cryptoId: "plain-api-key",
+        name: "Plain API",
+        type: "apiKey",
+        payload: encryptedPayload,
+      }),
+    ).rejects.toThrow("does not allow the selected secret type");
+
+    const saved = await admin.mutation(api.secrets.save, {
+      environment: "local",
+      projectId,
+      cryptoId: "introducer-api-key",
+      name: "Introducer API",
+      type: "introducerApiKey",
+      payload: encryptedPayload,
+    });
+    expect(
+      (await admin.query(api.secrets.list, { environment: "local" })).find(
+        (row) => row.definition._id === saved.secretId,
+      )?.definition.type,
+    ).toBe("introducerApiKey");
+
+    await expect(
+      admin.mutation(api.projects.setAllowedSecretTypes, {
+        projectId,
+        allowedSecretTypes: ["login"],
+      }),
+    ).rejects.toThrow("Move or archive");
+    await expect(
+      developer.mutation(api.projects.setAllowedSecretTypes, {
+        projectId,
+        allowedSecretTypes: ["introducerApiKey", "apiKey"],
+      }),
+    ).rejects.toThrow("Admin role required");
+
+    await admin.mutation(api.secrets.setArchiveStatus, {
+      secretId: saved.secretId,
+      environment: "local",
+      archived: true,
+    });
+    await admin.mutation(api.projects.setAllowedSecretTypes, {
+      projectId,
+      allowedSecretTypes: ["login"],
+    });
+    await expect(
+      admin.mutation(api.secrets.setArchiveStatus, {
+        secretId: saved.secretId,
+        environment: "local",
+        archived: false,
+      }),
+    ).rejects.toThrow("does not allow this secret type");
+  });
+
   test("approves and revokes a second browser with signed device envelopes", async () => {
     const t = convexTest(schema, modules);
     const admin = authenticated(t, "device_admin", "devices@example.test");

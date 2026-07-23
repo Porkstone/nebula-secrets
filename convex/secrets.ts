@@ -10,7 +10,10 @@ import {
   environmentValidator,
   secretTypeValidator,
 } from "./validators";
-import { getOrCreateGeneralProject } from "./lib/projects";
+import {
+  getOrCreateGeneralProject,
+  projectAllowsSecretType,
+} from "./lib/projects";
 
 export const list = query({
   args: {
@@ -54,9 +57,14 @@ export const save = mutation({
   },
   handler: async (ctx, args) => {
     const actor = await requireEnvironmentAccess(ctx, args.environment);
-    const projectId = args.projectId ?? await getOrCreateGeneralProject(ctx, actor._id);
+    const projectId =
+      args.projectId ?? (await getOrCreateGeneralProject(ctx, actor._id));
     const project = await ctx.db.get("projects", projectId);
-    if (!project || project.status !== "active") throw new Error("Project not found.");
+    if (!project || project.status !== "active")
+      throw new Error("Project not found.");
+    if (!projectAllowsSecretType(project, args.type)) {
+      throw new Error("This project does not allow the selected secret type.");
+    }
     const now = Date.now();
     let secretId = args.secretId;
     if (secretId) {
@@ -64,7 +72,8 @@ export const save = mutation({
       if (!definition || definition.status !== "active") {
         throw new Error("Secret definition not found.");
       }
-      if (definition.cryptoId !== args.cryptoId) throw new Error("Secret identity mismatch.");
+      if (definition.cryptoId !== args.cryptoId)
+        throw new Error("Secret identity mismatch.");
       await ctx.db.patch("secretDefinitions", secretId, {
         name: args.name.trim(),
         type: args.type,
@@ -104,8 +113,13 @@ export const save = mutation({
       .unique();
     let valueId;
     if (existing) {
-      if (args.expectedVersion !== undefined && existing.version !== args.expectedVersion) {
-        throw new Error("This secret changed in another session. Refresh and try again.");
+      if (
+        args.expectedVersion !== undefined &&
+        existing.version !== args.expectedVersion
+      ) {
+        throw new Error(
+          "This secret changed in another session. Refresh and try again.",
+        );
       }
       await ctx.db.insert("secretValueVersions", {
         secretValueId: existing._id,
@@ -154,6 +168,17 @@ export const setArchiveStatus = mutation({
     const actor = await requireEnvironmentAccess(ctx, args.environment);
     const definition = await ctx.db.get("secretDefinitions", args.secretId);
     if (!definition) throw new Error("Secret not found.");
+    if (!args.archived) {
+      const project = await ctx.db.get("projects", definition.projectId);
+      if (!project || project.status !== "active") {
+        throw new Error("Project not found.");
+      }
+      if (!projectAllowsSecretType(project, definition.type)) {
+        throw new Error(
+          "This project does not allow this secret type. Move the secret before restoring it.",
+        );
+      }
+    }
     await ctx.db.patch("secretDefinitions", args.secretId, {
       status: args.archived ? "archived" : "active",
       archivedAt: args.archived ? Date.now() : undefined,

@@ -50,6 +50,7 @@ export const deviceEnvelopeValidator = v.object({
 export const secretTypeValidator = v.union(
   v.literal("login"),
   v.literal("apiKey"),
+  v.literal("introducerApiKey"),
   v.literal("licenseKey"),
 );
 
@@ -66,3 +67,4 @@ export type SharedEnvironment = Exclude<Environment, "local">;
 export type UserRole = "developer" | "admin" | "systemAdministrator";
 export type AuthProvider = "workos";
 export type DeviceStatus = "pending" | "active" | "revoked";
+export type SecretType = "login" | "apiKey" | "introducerApiKey" | "licenseKey";

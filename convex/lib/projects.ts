@@ -1,8 +1,19 @@
-import type { Id } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import type { SecretType } from "../validators";
 
 export const GENERAL_PROJECT_NAME = "General";
 export const GENERAL_PROJECT_NORMALIZED_NAME = "general";
+
+export function projectAllowsSecretType(
+  project: Doc<"projects">,
+  secretType: SecretType,
+) {
+  return (
+    project.allowedSecretTypes === undefined ||
+    project.allowedSecretTypes.includes(secretType)
+  );
+}
 
 export async function getOrCreateGeneralProject(
   ctx: MutationCtx,

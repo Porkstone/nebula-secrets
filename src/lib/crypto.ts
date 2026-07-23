@@ -1,5 +1,5 @@
 export type Environment = "local" | "development" | "uat" | "production";
-export type SecretType = "login" | "apiKey" | "licenseKey";
+export type SecretType = "login" | "apiKey" | "introducerApiKey" | "licenseKey";
 
 export type EncryptedPayload = {
   ciphertext: string;
@@ -16,6 +16,8 @@ export type SecretPayload = {
   url?: string;
   apiKey?: string;
   endpoint?: string;
+  introducerCode?: string;
+  webserviceLogin?: string;
   licenseKey?: string;
   licensee?: string;
   expiresAt?: string;

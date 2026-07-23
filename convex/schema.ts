@@ -138,6 +138,16 @@ export default defineSchema({
   projects: defineTable({
     name: v.string(),
     normalizedName: v.string(),
+    allowedSecretTypes: v.optional(
+      v.array(
+        v.union(
+          v.literal("login"),
+          v.literal("apiKey"),
+          v.literal("introducerApiKey"),
+          v.literal("licenseKey"),
+        ),
+      ),
+    ),
     status: v.union(v.literal("active"), v.literal("archived")),
     createdBy: v.id("users"),
     createdAt: v.number(),
@@ -154,6 +164,7 @@ export default defineSchema({
     type: v.union(
       v.literal("login"),
       v.literal("apiKey"),
+      v.literal("introducerApiKey"),
       v.literal("licenseKey"),
     ),
     status: v.union(v.literal("active"), v.literal("archived")),
@@ -164,7 +175,8 @@ export default defineSchema({
   })
     .index("by_status", ["status"])
     .index("by_cryptoId", ["cryptoId"])
-    .index("by_projectId_and_status", ["projectId", "status"]),
+    .index("by_projectId_and_status", ["projectId", "status"])
+    .index("by_projectId_and_type_and_status", ["projectId", "type", "status"]),
 
   secretValues: defineTable({
     secretId: v.id("secretDefinitions"),
