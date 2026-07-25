@@ -1275,7 +1275,7 @@ function Dashboard({
   const access = useQuery(api.access.listMine, { deviceId });
   const touchDevice = useMutation(api.devices.touch);
   const [section, setSection] = useState<
-    "vault" | "devices" | "admin" | "authentication" | "audit"
+    "vault" | "projects" | "devices" | "admin" | "authentication" | "audit"
   >("vault");
   const [environment, setEnvironment] = useState<Environment>(() =>
     readStoredEnvironment(user._id),
@@ -1322,6 +1322,15 @@ function Dashboard({
             }}
           >
             <LayoutGrid size={18} /> Vault
+          </button>
+          <button
+            className={section === "projects" ? "nav-item active" : "nav-item"}
+            onClick={() => {
+              setSection("projects");
+              setMobileNav(false);
+            }}
+          >
+            <Folder size={18} /> Projects
           </button>
           <button
             className={section === "devices" ? "nav-item active" : "nav-item"}
@@ -1388,13 +1397,15 @@ function Dashboard({
             <span>
               {section === "vault"
                 ? "Secrets vault"
-                : section === "devices"
-                  ? "Device access"
-                  : section === "admin"
-                    ? "Administration"
-                    : section === "authentication"
-                      ? "Authentication"
-                      : "Audit activity"}
+                : section === "projects"
+                  ? "Projects"
+                  : section === "devices"
+                    ? "Device access"
+                    : section === "admin"
+                      ? "Administration"
+                      : section === "authentication"
+                        ? "Authentication"
+                        : "Audit activity"}
             </span>
             {section === "vault" && (
               <small>{environmentLabels[environment]} environment</small>
@@ -1438,6 +1449,7 @@ function Dashboard({
               onEnvironmentChange={selectEnvironment}
             />
           )}
+          {section === "projects" && <ProjectsArea user={user} />}
           {section === "devices" && (
             <DevicesArea user={user} users={users} deviceId={deviceId} />
           )}
@@ -1537,7 +1549,6 @@ function Vault({
   const [projectFilter, setProjectFilter] = useState(
     () => readStoredValue(projectStorageKey(user._id)) ?? "all",
   );
-  const [showProjects, setShowProjects] = useState(false);
   const [editorRow, setEditorRow] = useState<SecretRow | "new" | null>(null);
   const [detailSecretId, setDetailSecretId] =
     useState<Id<"secretDefinitions"> | null>(null);
@@ -1745,9 +1756,6 @@ function Vault({
               </p>
             </div>
             <div className="page-buttons">
-              <button className="button" onClick={() => setShowProjects(true)}>
-                <FolderPlus size={17} /> Projects
-              </button>
               <button
                 className="button primary"
                 onClick={() => setEditorRow("new")}
@@ -1954,11 +1962,30 @@ function Vault({
           onArchive={() => void archive(detailRow)}
         />
       )}
-      {showProjects && projects && (
+    </>
+  );
+}
+
+function ProjectsArea({ user }: { user: AppUser }) {
+  const projects = useQuery(api.projects.list, {});
+
+  return (
+    <>
+      <div className="page-actions">
+        <div>
+          <h1>Projects</h1>
+          <p>
+            Organize secrets into shared project groups and control which secret
+            types each project can contain.
+          </p>
+        </div>
+      </div>
+      {!projects ? (
+        <LoadingPanel />
+      ) : (
         <ProjectManager
           projects={projects}
           canManageSecretTypes={user.role !== "developer"}
-          onClose={() => setShowProjects(false)}
         />
       )}
     </>
@@ -1968,11 +1995,9 @@ function Vault({
 function ProjectManager({
   projects,
   canManageSecretTypes,
-  onClose,
 }: {
   projects: Doc<"projects">[];
   canManageSecretTypes: boolean;
-  onClose: () => void;
 }) {
   const createProject = useMutation(api.projects.create);
   const renameProject = useMutation(api.projects.rename);
@@ -2033,11 +2058,7 @@ function ProjectManager({
     left.name.localeCompare(right.name),
   );
   return (
-    <Modal
-      title="Projects"
-      subtitle="Organize every secret into a shared project group."
-      onClose={onClose}
-    >
+    <section className="panel projects-panel">
       <div className="project-manager">
         <form className="project-form" onSubmit={(event) => void submit(event)}>
           <label>
@@ -2155,7 +2176,7 @@ function ProjectManager({
           remain client encrypted.
         </p>
       </div>
-    </Modal>
+    </section>
   );
 }
 

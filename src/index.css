@@ -1067,6 +1067,9 @@ textarea:focus {
   display: grid;
   gap: 1rem;
 }
+.projects-panel {
+  padding: 1.25rem;
+}
 .project-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
