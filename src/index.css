@@ -914,6 +914,10 @@ textarea:focus {
   background: #f7f0e7;
   color: #8b6229;
 }
+.secret-icon.webhookSubscription {
+  background: #e7f4f7;
+  color: #286f7d;
+}
 .secret-title {
   min-width: 0;
   display: grid;
@@ -1287,6 +1291,20 @@ textarea:focus {
   color: var(--ink-faint);
   font-size: 0.68rem;
   line-height: 1.45;
+}
+.licence-file-field input[type="file"] {
+  padding: 0.42rem;
+}
+.licence-file-field input[type="file"]::file-selector-button {
+  margin-right: 0.7rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface-raised);
+  color: var(--ink);
+  padding: 0.42rem 0.65rem;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
 }
 .project-item:last-child {
   border-bottom: 0;
@@ -2543,6 +2561,16 @@ textarea::placeholder {
 .secret-icon.licenseKey {
   color: var(--warning);
   background: var(--warning-soft);
+}
+
+.secret-icon.webhookSubscription {
+  color: #55b9c9;
+  background: rgba(85, 185, 201, 0.13);
+}
+
+:root[data-theme="light"] .secret-icon.webhookSubscription {
+  color: #287787;
+  background: rgba(40, 119, 135, 0.1);
 }
 
 .status-chip {

@@ -4,6 +4,7 @@ export type SecretType =
   | "apiKey"
   | "introducerApiKey"
   | "licenseKey"
+  | "webhookSubscription"
   | "webConfig";
 
 export type WebConfigEntry = {
@@ -31,6 +32,7 @@ export type SecretPayload = {
   licenseKey?: string;
   licensee?: string;
   expiresAt?: string;
+  webhookSecret?: string;
   webConfigEntries?: WebConfigEntry[];
 };
 

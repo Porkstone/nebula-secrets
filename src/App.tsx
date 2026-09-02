@@ -37,6 +37,7 @@ import {
   Trash2,
   UserPlus,
   Users,
+  Webhook,
   Moon,
   X,
 } from "lucide-react";
@@ -175,6 +176,7 @@ const secretTypes: SecretType[] = [
   "apiKey",
   "introducerApiKey",
   "licenseKey",
+  "webhookSubscription",
   "webConfig",
 ];
 const secretTypeLabels: Record<SecretType, string> = {
@@ -182,6 +184,7 @@ const secretTypeLabels: Record<SecretType, string> = {
   apiKey: "API Key",
   introducerApiKey: "Introducer API Key",
   licenseKey: "License Key",
+  webhookSubscription: "Webhook Subscription",
   webConfig: "Web.Config",
 };
 
@@ -2182,6 +2185,7 @@ function ProjectManager({
 
 function SecretIcon({ type }: { type: SecretType }) {
   if (type === "login") return <LogIn size={19} />;
+  if (type === "webhookSubscription") return <Webhook size={19} />;
   if (
     type === "apiKey" ||
     type === "introducerApiKey" ||
@@ -2213,6 +2217,8 @@ function SecretEditor({
   onSaved: () => void;
 }) {
   const save = useMutation(api.secrets.save);
+  const generateUploadUrl = useMutation(api.attachments.generateUploadUrl);
+  const commitAttachment = useMutation(api.attachments.commit);
   const [name, setName] = useState(row?.definition.name ?? "");
   const [type, setType] = useState<SecretType>(row?.definition.type ?? "login");
   const [projectId, setProjectId] = useState<Id<"projects"> | "">(
@@ -2230,7 +2236,9 @@ function SecretEditor({
         : {}),
     },
   );
+  const [licenceFile, setLicenceFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
+  const [saveCompleted, setSaveCompleted] = useState(false);
   const [error, setError] = useState("");
   const selectedProject = projects.find((project) => project._id === projectId);
   const selectedProjectAllowedTypes = selectedProject
@@ -2317,6 +2325,7 @@ function SecretEditor({
     event.preventDefault();
     setBusy(true);
     setError("");
+    let didSave = false;
     try {
       let payloadToEncrypt = payload;
       if (type === "webConfig") {
@@ -2336,6 +2345,12 @@ function SecretEditor({
           throw new Error("Web.Config keys must be unique.");
         }
         payloadToEncrypt = { notes: payload.notes, webConfigEntries: entries };
+      } else if (type === "webhookSubscription") {
+        const url = payload.url?.trim() ?? "";
+        const webhookSecret = payload.webhookSecret ?? "";
+        if (!url) throw new Error("URL is required.");
+        if (!webhookSecret) throw new Error("Secret is required.");
+        payloadToEncrypt = { notes: payload.notes, url, webhookSecret };
       }
       const cryptoId = row?.definition.cryptoId ?? crypto.randomUUID();
       const version = (row?.value?.version ?? 0) + 1;
@@ -2350,7 +2365,7 @@ function SecretEditor({
           version,
         }),
       );
-      await save({
+      const saved = await save({
         environment,
         secretId: row?.definition._id,
         projectId: projectId || undefined,
@@ -2360,10 +2375,45 @@ function SecretEditor({
         payload: encrypted,
         expectedVersion: row?.value?.version,
       });
+      didSave = true;
+      if (type === "webhookSubscription" && licenceFile) {
+        const attachmentCryptoId = crypto.randomUUID();
+        const encryptedAttachment = await encryptAttachment(
+          licenceFile,
+          environmentKey,
+          attachmentCryptoId,
+          saved.valueId,
+        );
+        const uploadUrl = await generateUploadUrl({
+          secretValueId: saved.valueId,
+        });
+        const response = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/octet-stream" },
+          body: encryptedAttachment.encryptedBlob,
+        });
+        if (!response.ok) throw new Error("Encrypted licence upload failed.");
+        const result = (await response.json()) as {
+          storageId: Id<"_storage">;
+        };
+        await commitAttachment({
+          secretValueId: saved.valueId,
+          cryptoId: attachmentCryptoId,
+          storageId: result.storageId,
+          encryptedMetadata: encryptedAttachment.encryptedMetadata,
+          fileIv: encryptedAttachment.fileIv,
+          encryptedSize: encryptedAttachment.encryptedBlob.size,
+        });
+      }
       onSaved();
     } catch (cause) {
+      setSaveCompleted(didSave);
+      const message =
+        cause instanceof Error ? cause.message : "The upload failed.";
       setError(
-        cause instanceof Error ? cause.message : "Unable to save the secret.",
+        didSave
+          ? `The secret was saved, but its licence file could not be uploaded. Close this editor and use Upload licence from the secret details to retry. ${message}`
+          : message,
       );
       setBusy(false);
     }
@@ -2378,13 +2428,17 @@ function SecretEditor({
       <form className="secret-form" onSubmit={(event) => void submit(event)}>
         <div className="form-grid two">
           <label>
-            Display name
+            {type === "webhookSubscription" ? "Name" : "Display name"}
             <input
               autoFocus
               required
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder="e.g. Stripe dashboard"
+              placeholder={
+                type === "webhookSubscription"
+                  ? "e.g. Stripe billing events"
+                  : "e.g. Stripe dashboard"
+              }
             />
           </label>
           <label>
@@ -2575,6 +2629,52 @@ function SecretEditor({
             </label>
           </div>
         )}
+        {type === "webhookSubscription" && (
+          <div className="form-grid two">
+            <label className="wide">
+              URL
+              <input
+                required
+                type="url"
+                value={payload.url ?? ""}
+                onChange={(event) => field("url", event.target.value)}
+                placeholder="https://example.com/webhooks"
+                autoComplete="off"
+              />
+            </label>
+            <label className="wide">
+              Secret
+              <input
+                required
+                type="password"
+                value={payload.webhookSecret ?? ""}
+                onChange={(event) => field("webhookSecret", event.target.value)}
+                autoComplete="new-password"
+              />
+            </label>
+            <label className="wide licence-file-field">
+              Licence file
+              <input
+                type="file"
+                onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null;
+                  if (file && file.size > 5 * 1024 * 1024) {
+                    setLicenceFile(null);
+                    setError("Licence files are limited to 5 MB.");
+                    event.currentTarget.value = "";
+                    return;
+                  }
+                  setError("");
+                  setLicenceFile(file);
+                }}
+              />
+              <small>
+                Optional. The file and filename are encrypted locally before
+                upload. Maximum size: 5 MB.
+              </small>
+            </label>
+          </div>
+        )}
         {type === "webConfig" && (
           <section
             className="web-config-editor"
@@ -2657,13 +2757,23 @@ function SecretEditor({
           <button type="button" className="button ghost" onClick={onClose}>
             Cancel
           </button>
-          <button className="button primary" type="submit" disabled={busy}>
+          <button
+            className="button primary"
+            type="submit"
+            disabled={busy || saveCompleted}
+          >
             {busy ? (
               <LoaderCircle className="spin" size={17} />
+            ) : saveCompleted ? (
+              <Check size={17} />
             ) : (
               <LockKeyhole size={17} />
             )}
-            {busy ? "Encrypting…" : "Encrypt & save"}
+            {busy
+              ? "Encrypting…"
+              : saveCompleted
+                ? "Secret saved"
+                : "Encrypt & save"}
           </button>
         </div>
       </form>
@@ -2737,6 +2847,15 @@ function SecretDetail({
       },
       { label: "Licensee", value: payload?.licensee ?? "" },
       { label: "Expires", value: payload?.expiresAt ?? "" },
+    ];
+  } else if (row.definition.type === "webhookSubscription") {
+    sensitiveFields = [
+      { label: "URL", value: payload?.url ?? "" },
+      {
+        label: "Secret",
+        value: payload?.webhookSecret ?? "",
+        sensitive: true,
+      },
     ];
   } else {
     sensitiveFields = (payload?.webConfigEntries ?? []).map((entry) => ({
@@ -2871,6 +2990,7 @@ function SecretDetail({
           <AttachmentSection
             environmentKey={environmentKey}
             secretValueId={row.value._id}
+            licenceFile={row.definition.type === "webhookSubscription"}
           />
           <VersionHistory secretValue={row.value} />
         </div>
@@ -2882,9 +3002,11 @@ function SecretDetail({
 function AttachmentSection({
   environmentKey,
   secretValueId,
+  licenceFile = false,
 }: {
   environmentKey: CryptoKey;
   secretValueId: Id<"secretValues">;
+  licenceFile?: boolean;
 }) {
   const convex = useConvex();
   const attachments = useQuery(api.attachments.list, { secretValueId });
@@ -3015,11 +3137,15 @@ function AttachmentSection({
     <section className="detail-section">
       <div className="section-heading">
         <div>
-          <h3>Encrypted attachments</h3>
-          <p>File contents and filenames are encrypted before upload.</p>
+          <h3>{licenceFile ? "Licence file" : "Encrypted attachments"}</h3>
+          <p>
+            {licenceFile
+              ? "Optional licence data; file contents and filename are encrypted before upload."
+              : "File contents and filenames are encrypted before upload."}
+          </p>
         </div>
         <label className={busy ? "button small disabled" : "button small"}>
-          <FilePlus2 size={15} /> Add file
+          <FilePlus2 size={15} /> {licenceFile ? "Upload licence" : "Add file"}
           <input
             className="sr-only"
             type="file"
@@ -3043,7 +3169,9 @@ function AttachmentSection({
           <LoaderCircle className="spin" size={15} /> Loading attachments…
         </div>
       ) : attachments.length === 0 ? (
-        <p className="muted compact">No files attached.</p>
+        <p className="muted compact">
+          {licenceFile ? "No licence file uploaded." : "No files attached."}
+        </p>
       ) : (
         <div className="attachment-list">
           {attachments.map((attachment) => {

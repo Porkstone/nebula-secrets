@@ -1,6 +1,6 @@
 # Nebula Secrets
 
-Nebula Secrets is a development-team vault built with React, Vite, and Convex. It stores Login, API Key, and License Key values per environment, with user-private Local values and shared Development, UAT, and Production values.
+Nebula Secrets is a development-team vault built with React, Vite, and Convex. It stores Login, API Key, License Key, Webhook Subscription, and Web.Config values per environment, with user-private Local values and shared Development, UAT, and Production values.
 
 ## Features
 

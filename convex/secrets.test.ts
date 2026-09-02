@@ -377,6 +377,47 @@ describe("authenticated secrets access model", () => {
     });
   });
 
+  test("stores Webhook Subscription secrets and enforces project secret type restrictions", async () => {
+    const { admin } = await initializedVault();
+    const projectId = await admin.mutation(api.projects.create, {
+      name: "Webhook integrations",
+      allowedSecretTypes: ["webhookSubscription"],
+    });
+
+    const saved = await admin.mutation(api.secrets.save, {
+      environment: "local",
+      projectId,
+      cryptoId: "webhook-subscription",
+      name: "Billing events",
+      type: "webhookSubscription",
+      payload: encryptedPayload,
+    });
+    const savedDefinition = (
+      await admin.query(api.secrets.list, { environment: "local" })
+    ).find((row) => row.definition._id === saved.secretId)?.definition;
+
+    expect(savedDefinition?.type).toBe("webhookSubscription");
+    await expect(
+      admin.mutation(api.secrets.save, {
+        environment: "local",
+        projectId,
+        cryptoId: "not-allowed-login",
+        name: "Login",
+        type: "login",
+        payload: encryptedPayload,
+      }),
+    ).rejects.toThrow("does not allow the selected secret type");
+    await expect(
+      admin.mutation(api.projects.setAllowedSecretTypes, {
+        projectId,
+        allowedSecretTypes: ["login"],
+      }),
+    ).resolves.toEqual({
+      status: "blocked",
+      blockedTypes: ["webhookSubscription"],
+    });
+  });
+
   test("moves all secrets of a blocked type before removing the project restriction", async () => {
     const { t, admin } = await initializedVault();
     const { developer } = await inviteAndLinkDeveloper(t, admin);

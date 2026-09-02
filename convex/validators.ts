@@ -52,6 +52,7 @@ export const secretTypeValidator = v.union(
   v.literal("apiKey"),
   v.literal("introducerApiKey"),
   v.literal("licenseKey"),
+  v.literal("webhookSubscription"),
   v.literal("webConfig"),
 );
 
@@ -73,4 +74,5 @@ export type SecretType =
   | "apiKey"
   | "introducerApiKey"
   | "licenseKey"
+  | "webhookSubscription"
   | "webConfig";
