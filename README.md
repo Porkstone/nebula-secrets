@@ -54,7 +54,19 @@ The combined Convex/Vite development command serves the app at [http://127.0.0.1
 
 Additional users are invited by email from **Admin > Users & access**. On first sign-in, the exact normalized WorkOS email is linked to the invitation, after which the user enrolls a device key. A System Administrator configures provider metadata and performs staged verification from **Authentication**.
 
-To use another browser or profile, sign in and request device access. The new browser creates its own keys and displays a six-digit verification code. From **Devices** in an existing approved browser, compare the code and approve the request. The trusted browser decrypts its environment keys locally, re-wraps them to the new browser's public key, and signs the approval; private keys never leave either browser.
+### Approving additional devices
+
+New devices can only be approved from an already approved browser signed into **the same account that requested access**. Signing into the same account in a new browser is not enough: the approving browser must already hold that account's device keys. Use the browser profile and website address where the account previously opened the vault successfully.
+
+Admins and System Administrators cannot approve another user's device. The **Workspace devices** table lets System Administrators view and revoke devices, but each user must approve their own additional devices.
+
+1. In the new browser or profile, sign in and request device access. A six-digit verification code appears.
+2. In an already approved browser, sign into the same account and open **Devices**.
+3. Find the request under **Pending requests**, compare the verification code with the new browser, and select **Approve**.
+
+If the approval action is missing, check that both browsers are signed into the same account, then refresh the approved browser's Devices page. Requests expire after 15 minutes; if a request has expired, select **Remove and request again** in the new browser before repeating the steps.
+
+The trusted browser decrypts its environment keys locally, re-wraps them to the new browser's public key, and signs the approval; private keys never leave either browser.
 
 Devices can be renamed or revoked from **Devices**. Revocation removes their server-held key envelopes and blocks future device-authorized reads, but cannot erase plaintext or keys that a compromised browser previously cached. If every approved browser is lost, private Local values are intentionally unrecoverable in this release.
 
